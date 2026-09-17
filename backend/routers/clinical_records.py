@@ -1,14 +1,14 @@
 """Patient-scoped clinical attachment upload and retrieval."""
 
-import hashlib
 import os
 import re
 import uuid
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -17,11 +17,12 @@ from database import get_db
 from models.db_models import ClinicalRecord, Study, User
 from routers.auth import get_current_user
 from services.access_control import audit, can_access_patient, require_patient, upload_department, patient_for_upload
+from services.record_crypto import (
+    IntegrityFailure, KeyUnavailable, MAX_RECORD_BYTES, seal_upload, verify_record,
+)
 
 router = APIRouter(prefix="/api", tags=["clinical-records"])
 
-MAX_RECORD_BYTES = 512 * 1024 * 1024
-CHUNK_BYTES = 1024 * 1024
 CONTENT_TYPES = {
     ".pdf": ("application/pdf", b"%PDF-"),
     ".png": ("image/png", b"\x89PNG\r\n\x1a\n"),
@@ -44,6 +45,8 @@ def _record_metadata(record: ClinicalRecord) -> dict:
         "media_type": record.media_type,
         "size_bytes": record.size_bytes,
         "sha256": record.sha256,
+        "ciphertext_sha256": record.ciphertext_sha256,
+        "encryption": "AES-256-GCM" if record.encryption_version == 1 else "legacy",
         "uploaded_by_user_id": record.uploaded_by_user_id,
         "version": record.version,
         "patient_visible": record.patient_visible,
@@ -65,7 +68,7 @@ def _record_for_user(db: Session, user: User, record_id: int, action: str) -> Cl
 
 
 def _storage_path(key: str) -> Path:
-    if not re.fullmatch(r"[0-9a-f]{32}\.(pdf|png|jpg|jpeg|tici|dcm)", key):
+    if not re.fullmatch(r"[0-9a-f]{32}\.enc", key):
         raise HTTPException(500, "Invalid stored record key")
     return Path(RECORD_DIR) / key
 
@@ -146,38 +149,31 @@ def upload_record(
         raise HTTPException(400, "Unsupported file type")
     media_type, signature = CONTENT_TYPES[ext]
     os.makedirs(RECORD_DIR, exist_ok=True)
-    key = f"{uuid.uuid4().hex}{ext}"
+    key = f"{uuid.uuid4().hex}.enc"
     temp_path = Path(RECORD_DIR) / f"{key}.part"
     final_path = _storage_path(key)
-    digest = hashlib.sha256()
-    size = 0
-    head = b""
     committed = False
     try:
-        with temp_path.open("wb") as target:
-            while chunk := file.file.read(CHUNK_BYTES):
-                size += len(chunk)
-                if size > MAX_RECORD_BYTES:
-                    raise HTTPException(413, "Record exceeds 512 MB")
-                if len(head) < 132:
-                    head = (head + chunk)[:132]
-                digest.update(chunk)
-                target.write(chunk)
-        if size == 0:
+        sealed = seal_upload(
+            file.file, temp_path, patient_id=patient_id, storage_key=key
+        )
+        if sealed.size_bytes == 0:
             raise HTTPException(400, "Empty file")
         if ext == ".dcm":
-            valid = len(head) >= 132 and head[128:132] == b"DICM"
+            valid = len(sealed.head) >= 132 and sealed.head[128:132] == b"DICM"
         else:
-            valid = head.startswith(signature)
+            valid = sealed.head.startswith(signature)
         if not valid:
             raise HTTPException(400, "File content does not match extension")
 
         duplicate = db.query(ClinicalRecord).filter(
             ClinicalRecord.patient_id == patient_id,
-            ClinicalRecord.sha256 == digest.hexdigest(),
-            ClinicalRecord.size_bytes == size,
+            ClinicalRecord.sha256 == sealed.sha256,
+            ClinicalRecord.size_bytes == sealed.size_bytes,
+            ClinicalRecord.encryption_version == 1,
         ).first()
         if duplicate:
+            verify_record(duplicate, _storage_path(duplicate.storage_key))
             audit(db, current_user, "duplicate_record_upload", "record", duplicate.id, patient_id, True)
             return _record_metadata(duplicate)
 
@@ -186,23 +182,36 @@ def upload_record(
             record_type=record_type, title=title,
             original_filename=filename,
             media_type=media_type, storage_key=key,
-            size_bytes=size, sha256=digest.hexdigest(),
+            size_bytes=sealed.size_bytes, sha256=sealed.sha256,
+            ciphertext_sha256=sealed.ciphertext_sha256,
+            encryption_version=1, key_id=sealed.key_id,
+            wrapped_key=sealed.wrapped_key, wrap_nonce=sealed.wrap_nonce,
+            file_nonce=sealed.file_nonce, file_tag=sealed.file_tag,
             uploaded_by_user_id=current_user.id,
             version=1, patient_visible=False,
             created_at=datetime.utcnow(),
         )
         db.add(record)
         db.flush()
+        if final_path.exists():
+            raise HTTPException(409, "Record storage key collision")
         os.replace(temp_path, final_path)
+        verify_record(record, final_path)
         db.commit()
         committed = True
         db.refresh(record)
         audit(db, current_user, "upload_record", "record", record.id, patient_id, True)
         return _record_metadata(record)
-    except Exception:
+    except Exception as exc:
         db.rollback()
         if not committed and final_path.exists():
             final_path.unlink()
+        if isinstance(exc, ValueError) and str(exc) == "Record exceeds 512 MB":
+            raise HTTPException(413, str(exc)) from exc
+        if isinstance(exc, KeyUnavailable):
+            raise HTTPException(503, "Record encryption key is unavailable") from exc
+        if isinstance(exc, IntegrityFailure):
+            raise HTTPException(409, "Stored record failed integrity verification") from exc
         raise
     finally:
         if temp_path.exists():
@@ -239,6 +248,40 @@ def get_record(
     return _record_metadata(_record_for_user(db, current_user, record_id, "view_record"))
 
 
+def _verify_for_response(db: Session, user: User, record: ClinicalRecord, *, collect: bool):
+    if record.encryption_version != 1:
+        audit(db, user, "legacy_record_blocked", "record", record.id, record.patient_id, False)
+        raise HTTPException(409, "Legacy record requires encryption migration")
+    try:
+        plaintext = verify_record(
+            record, _storage_path(record.storage_key), collect_plaintext=collect
+        )
+    except KeyUnavailable as exc:
+        audit(db, user, "record_key_unavailable", "record", record.id, record.patient_id, False)
+        raise HTTPException(503, "Record encryption key is unavailable") from exc
+    except IntegrityFailure as exc:
+        audit(db, user, "record_integrity_failed", "record", record.id, record.patient_id, False)
+        raise HTTPException(409, "Stored record failed integrity verification") from exc
+    audit(db, user, "verify_record", "record", record.id, record.patient_id, True)
+    return plaintext
+
+
+@router.get("/records/{record_id}/integrity")
+def check_record_integrity(
+    record_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    record = _record_for_user(db, current_user, record_id, "check_record_integrity")
+    _verify_for_response(db, current_user, record, collect=False)
+    return {
+        "id": record.id, "valid": True,
+        "algorithm": "AES-256-GCM",
+        "sha256": record.sha256,
+        "ciphertext_sha256": record.ciphertext_sha256,
+    }
+
+
 @router.get("/records/{record_id}/download")
 def download_record(
     record_id: int,
@@ -246,11 +289,13 @@ def download_record(
     current_user: User = Depends(get_current_user),
 ):
     record = _record_for_user(db, current_user, record_id, "download_record")
-    path = _storage_path(record.storage_key)
-    if not path.is_file():
-        raise HTTPException(404, "Record file not found")
-    return FileResponse(
-        path, media_type=record.media_type,
-        filename=record.original_filename,
-        headers={"Cache-Control": "private, no-store"},
+    plaintext = _verify_for_response(db, current_user, record, collect=True)
+    return Response(
+        content=plaintext,
+        media_type=record.media_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(record.original_filename)}",
+        },
     )

@@ -26,13 +26,18 @@
               <span>{{ record.original_filename }}</span>
               <span>{{ formatSize(record.size_bytes) }}</span>
               <span>{{ formatDate(record.created_at) }}</span>
+              <span :title="record.sha256">SHA-256 {{ record.sha256.slice(0, 12) }}…</span>
             </n-space>
           </template>
           <template #header-extra>
-            <n-tag size="small" :bordered="false">{{ record.record_type }}</n-tag>
+            <n-space :size="4">
+              <n-tag size="small" :bordered="false">{{ record.record_type }}</n-tag>
+              <n-tag v-if="record.encryption === 'AES-256-GCM'" size="small" type="success" :bordered="false">已加密</n-tag>
+            </n-space>
           </template>
           <template #action>
             <n-space align="center" :size="8">
+              <n-button size="small" @click="verify(record)">校验</n-button>
               <n-button size="small" @click="download(record)">下载</n-button>
               <template v-if="canWrite">
                 <span class="hint">患者可见</span>
@@ -64,6 +69,8 @@ type RecordItem = {
   size_bytes: number;
   created_at: string;
   patient_visible: boolean;
+  sha256: string;
+  encryption: string;
 };
 
 const props = defineProps<{ patientId: number }>();
@@ -123,6 +130,15 @@ async function upload({ file, onFinish, onError }: any) {
     onError();
   } finally {
     uploading.value = false;
+  }
+}
+
+async function verify(record: RecordItem) {
+  try {
+    await api.get(`/records/${record.id}/integrity`);
+    message.success("加密标签和 SHA-256 校验通过");
+  } catch {
+    message.error("完整性校验失败，请联系管理员");
   }
 }
 

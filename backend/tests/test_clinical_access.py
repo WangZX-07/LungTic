@@ -1,6 +1,9 @@
 """End-to-end authorization checks using synthetic patients and a temporary SQLite database."""
 import io
 import os
+import base64
+import json
+import hashlib
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -11,6 +14,11 @@ os.environ["LUNGTIC_CAPTCHA_SECRET"] = "integration-test-captcha-secret-32-chara
 os.environ["LUNGTIC_CORS_ORIGINS"] = "http://127.0.0.1:5173"
 os.environ["LUNGTIC_DATA_DIR"] = tempfile.mkdtemp(prefix="lungtic-test-data-")
 os.environ["LUNGTIC_LOCAL_VIEWER"] = "0"
+os.environ["LUNGTIC_RECORD_ACTIVE_KEY_ID"] = "test-v1"
+os.environ["LUNGTIC_RECORD_KEYS_JSON"] = json.dumps({
+    "test-v1": base64.b64encode(b"K" * 32).decode("ascii"),
+    "test-v2": base64.b64encode(b"L" * 32).decode("ascii"),
+})
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,12 +31,14 @@ from sqlalchemy.pool import StaticPool
 from main import app
 from database import Base, get_db
 from models.db_models import (
-    AccessGrant, AuditEvent, Department, DepartmentMembership, Patient,
+    AccessGrant, AuditEvent, ClinicalRecord, Department, DepartmentMembership, Patient,
     PatientCareAssignment, Series, Slice, Study, User, UserRole,
 )
 from services.auth_service import create_access_token
 from routers import clinical_records, dicom
 from services import dicom_parser
+from services.record_crypto import IntegrityFailure, KeyUnavailable, load_keyring, rewrap_record, verify_record
+from encrypt_legacy_records import migrate_record
 
 
 @pytest.fixture
@@ -163,15 +173,23 @@ def test_record_upload_visibility_grant_and_revoke(api):
     assert response.status_code == 200, response.text
     record_id = response.json()["id"]
     assert response.json()["sha256"]
-    assert len(list((tmp_path / "records").glob("*.pdf"))) == 1
+    encrypted_paths = list((tmp_path / "records").glob("*.enc"))
+    assert len(encrypted_paths) == 1
+    assert encrypted_paths[0].read_bytes() != file_data
+    assert not encrypted_paths[0].read_bytes().startswith(b"%PDF-")
+    assert response.json()["ciphertext_sha256"] == hashlib.sha256(encrypted_paths[0].read_bytes()).hexdigest()
+    assert response.json()["encryption"] == "AES-256-GCM"
     duplicate = client.post(
         path, headers=headers("doctor_a"), data=payload,
         files={"file": ("again.pdf", file_data, "application/pdf")},
     )
     assert duplicate.status_code == 200
     assert duplicate.json()["id"] == record_id
-    assert len(list((tmp_path / "records").glob("*.pdf"))) == 1
+    assert len(list((tmp_path / "records").glob("*.enc"))) == 1
 
+    assert client.get(
+        f"/api/records/{record_id}/integrity", headers=headers("doctor_a")
+    ).json()["valid"] is True
     download = f"/api/records/{record_id}/download"
     assert client.get(download, headers=headers("doctor_a")).content == file_data
     assert client.get(download, headers=headers("head_a")).status_code == 200
@@ -341,3 +359,120 @@ def test_uncompressed_nifti_upload(api):
     )
     assert response.status_code == 200, response.text
     assert response.json()["studies"][0]["slice_count"] == 2
+
+
+
+def test_tampering_blocks_plaintext_and_is_audited(api):
+    client, Session, ids, headers, tmp_path = api
+    response = client.post(
+        f"/api/patients/{ids['patient_a']}/records",
+        headers=headers("doctor_a"),
+        data={"title": "Integrity test", "record_type": "report"},
+        files={"file": ("safe.pdf", b"%PDF-1.4\nnot real patient data", "application/pdf")},
+    )
+    assert response.status_code == 200, response.text
+    record_id = response.json()["id"]
+    encrypted_path = next((tmp_path / "records").glob("*.enc"))
+    damaged = bytearray(encrypted_path.read_bytes())
+    damaged[0] ^= 1
+    encrypted_path.write_bytes(damaged)
+    for path in (f"/api/records/{record_id}/integrity", f"/api/records/{record_id}/download"):
+        result = client.get(path, headers=headers("doctor_a"))
+        assert result.status_code == 409, result.text
+        assert b"%PDF-" not in result.content
+    with Session() as db:
+        assert db.query(AuditEvent).filter(
+            AuditEvent.action == "record_integrity_failed",
+            AuditEvent.resource_id == record_id,
+            AuditEvent.allowed.is_(False),
+        ).count() == 2
+
+
+def test_master_key_rewrap_preserves_file_and_old_key_can_be_removed(api, monkeypatch):
+    client, Session, ids, headers, tmp_path = api
+    response = client.post(
+        f"/api/patients/{ids['patient_a']}/records",
+        headers=headers("doctor_a"),
+        data={"title": "Rotation test"},
+        files={"file": ("rotation.pdf", b"%PDF-1.4\nrotation", "application/pdf")},
+    )
+    assert response.status_code == 200, response.text
+    record_id = response.json()["id"]
+    encrypted_path = next((tmp_path / "records").glob("*.enc"))
+    before = encrypted_path.read_bytes()
+    with Session() as db:
+        record = db.query(ClinicalRecord).filter(ClinicalRecord.id == record_id).one()
+        _, keys = load_keyring()
+        rewrap_record(record, "test-v2", keys)
+        db.commit()
+    assert encrypted_path.read_bytes() == before
+    monkeypatch.setenv("LUNGTIC_RECORD_ACTIVE_KEY_ID", "test-v2")
+    monkeypatch.setenv("LUNGTIC_RECORD_KEYS_JSON", json.dumps({
+        "test-v2": base64.b64encode(b"L" * 32).decode("ascii"),
+    }))
+    download = client.get(f"/api/records/{record_id}/download", headers=headers("doctor_a"))
+    assert download.status_code == 200
+    assert download.content == b"%PDF-1.4\nrotation"
+
+
+
+def test_offline_legacy_migration_checks_hash_and_removes_plaintext(api):
+    client, Session, ids, headers, tmp_path = api
+    record_dir = tmp_path / "records"
+    record_dir.mkdir(exist_ok=True)
+    old_key = "a" * 32 + ".pdf"
+    plaintext = b"%PDF-1.4\nlegacy synthetic"
+    old_path = record_dir / old_key
+    old_path.write_bytes(plaintext)
+    with Session() as db:
+        record = ClinicalRecord(
+            patient_id=ids["patient_a"], record_type="report",
+            title="Legacy", original_filename="legacy.pdf",
+            media_type="application/pdf", storage_key=old_key,
+            size_bytes=len(plaintext), sha256=hashlib.sha256(plaintext).hexdigest(),
+            encryption_version=0, uploaded_by_user_id=ids["doctor_a"],
+            version=1, patient_visible=False, created_at=datetime.utcnow(),
+        )
+        db.add(record)
+        db.commit()
+        record_id = record.id
+    blocked = client.get(f"/api/records/{record_id}/download", headers=headers("doctor_a"))
+    assert blocked.status_code == 409
+    assert plaintext not in blocked.content
+    with Session() as db:
+        record = db.query(ClinicalRecord).filter(ClinicalRecord.id == record_id).one()
+        assert migrate_record(db, record, record_dir) is True
+    assert not old_path.exists()
+    assert len(list(record_dir.glob("*.enc"))) == 1
+    result = client.get(f"/api/records/{record_id}/download", headers=headers("doctor_a"))
+    assert result.status_code == 200
+    assert result.content == plaintext
+
+
+def test_missing_or_malformed_master_key_fails_closed(monkeypatch):
+    monkeypatch.setenv("LUNGTIC_RECORD_KEYS_JSON", json.dumps({
+        "test-v1": base64.b64encode(b"too short").decode("ascii")
+    }))
+    with pytest.raises(KeyUnavailable):
+        load_keyring()
+
+
+
+def test_ciphertext_is_bound_to_patient_and_storage_key(api):
+    client, Session, ids, headers, tmp_path = api
+    response = client.post(
+        f"/api/patients/{ids['patient_a']}/records",
+        headers=headers("doctor_a"),
+        data={"title": "Binding test"},
+        files={"file": ("binding.pdf", b"%PDF-1.4\nbinding", "application/pdf")},
+    )
+    assert response.status_code == 200
+    with Session() as db:
+        record = db.query(ClinicalRecord).filter(
+            ClinicalRecord.id == response.json()["id"]
+        ).one()
+        path = tmp_path / "records" / record.storage_key
+        record.patient_id = ids["patient_b"]
+        with pytest.raises(IntegrityFailure):
+            verify_record(record, path)
+        db.rollback()

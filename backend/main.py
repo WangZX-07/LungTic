@@ -1,4 +1,14 @@
 ﻿import os
+import tempfile
+
+# Starlette may spool multipart uploads before a route can encrypt them.
+# Keep that plaintext staging area under the explicitly configured private data root.
+_data_root = os.getenv("LUNGTIC_DATA_DIR")
+if _data_root:
+    _upload_tmp = os.path.join(_data_root, "tmp")
+    os.makedirs(_upload_tmp, exist_ok=True)
+    tempfile.tempdir = _upload_tmp
+
 os.environ["LUNGTIC_LOCAL_VIEWER"] = "0"
 os.environ["LUNGTIC_SERVER_MODE"] = "1"
 
@@ -14,9 +24,12 @@ from routers.tici import router as tici_router
 from routers.organization import router as organization_router
 from routers.clinical_records import router as clinical_records_router
 from config import CORS_ORIGINS, SERVER_MODE, JWT_SECRET, CAPTCHA_SECRET
+from services.record_crypto import load_keyring
 
-if SERVER_MODE and (not os.getenv("LUNGTIC_DB_URL") or not os.getenv("LUNGTIC_CORS_ORIGINS") or len(JWT_SECRET) < 32 or JWT_SECRET == "lungtic-dev-secret-change-in-prod" or "*" in CORS_ORIGINS or len(CAPTCHA_SECRET) < 32 or CAPTCHA_SECRET == "lungtic-captcha-secret"):
-    raise RuntimeError("Set LUNGTIC_DB_URL, 32+ character LUNGTIC_JWT_SECRET and LUNGTIC_CAPTCHA_SECRET, and explicit LUNGTIC_CORS_ORIGINS before server deployment")
+if SERVER_MODE and (not os.getenv("LUNGTIC_DB_URL") or not _data_root or not os.getenv("LUNGTIC_CORS_ORIGINS") or len(JWT_SECRET) < 32 or JWT_SECRET == "lungtic-dev-secret-change-in-prod" or "*" in CORS_ORIGINS or len(CAPTCHA_SECRET) < 32 or CAPTCHA_SECRET == "lungtic-captcha-secret"):
+    raise RuntimeError("Set LUNGTIC_DB_URL, LUNGTIC_DATA_DIR, 32+ character LUNGTIC_JWT_SECRET and LUNGTIC_CAPTCHA_SECRET, and explicit LUNGTIC_CORS_ORIGINS before server deployment")
+if SERVER_MODE:
+    load_keyring()
 
 app = FastAPI(title="LungTic API", version="0.3.0")
 
