@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">LungTic TICI 查看器可扩展架构</title>
+  <desc id="desc">展示输入适配、查看会话、TICI 惰性读取、前端阅片工作台以及未来扩展服务之间的关系。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6"/>
+    </marker>
+    <marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+    </marker>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .title { font: 700 28px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #0f172a; }
+      .subtitle { font: 400 14px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #64748b; }
+      .section { font: 700 13px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #475569; letter-spacing: 1px; }
+      .box-title { font: 700 17px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #0f172a; }
+      .box-copy { font: 400 13px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #475569; }
+      .small { font: 400 12px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #64748b; }
+      .implemented { fill: #ffffff; stroke: #93c5fd; stroke-width: 1.5; }
+      .core { fill: #eff6ff; stroke: #3b82f6; stroke-width: 2; }
+      .future { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.5; stroke-dasharray: 7 6; }
+      .line { fill: none; stroke: #3b82f6; stroke-width: 2; marker-end: url(#arrow); }
+      .line-muted { fill: none; stroke: #94a3b8; stroke-width: 1.7; stroke-dasharray: 6 5; marker-end: url(#arrow-muted); }
+    </style>
+  </defs>
+
+  <rect width="1280" height="760" fill="#f5f7fa"/>
+  <text x="56" y="54" class="title">TICI 查看器 · 可扩展产品架构</text>
+  <text x="56" y="82" class="subtitle">当前实现采用蓝色实线；灰色虚线为最终软件的扩展边界</text>
+
+  <text x="56" y="128" class="section">输入</text>
+  <g filter="url(#shadow)">
+    <rect x="56" y="148" width="176" height="88" rx="12" class="core"/>
+    <text x="76" y="180" class="box-title">TICI v1.0</text>
+    <text x="76" y="205" class="box-copy">时序影像 · Mask</text>
+    <text x="76" y="224" class="small">元数据 · IGTV · 轨迹</text>
+  </g>
+  <g>
+    <rect x="56" y="258" width="176" height="82" rx="12" class="future"/>
+    <text x="76" y="290" class="box-title">普通影像</text>
+    <text x="76" y="317" class="box-copy">DICOM · NIfTI · DICOMweb</text>
+  </g>
+
+  <text x="286" y="128" class="section">输入适配与会话</text>
+  <g filter="url(#shadow)">
+    <rect x="286" y="148" width="232" height="192" rx="14" class="implemented"/>
+    <text x="310" y="181" class="box-title">Viewer Session API</text>
+    <text x="310" y="211" class="box-copy">用户隔离的临时文件会话</text>
+    <text x="310" y="238" class="box-copy">· 打开与格式校验</text>
+    <text x="310" y="263" class="box-copy">· 元数据查询</text>
+    <text x="310" y="288" class="box-copy">· 单层 PNG / Mask</text>
+    <text x="310" y="313" class="box-copy">· 关闭与清理</text>
+  </g>
+  <g>
+    <rect x="286" y="366" width="232" height="88" rx="12" class="future"/>
+    <text x="310" y="398" class="box-title">统一输入契约</text>
+    <text x="310" y="425" class="box-copy">ViewerInfo + ViewerSlice</text>
+  </g>
+
+  <text x="572" y="128" class="section">数据与格式内核</text>
+  <g filter="url(#shadow)">
+    <rect x="572" y="148" width="248" height="192" rx="14" class="core"/>
+    <text x="596" y="181" class="box-title">TiciReader</text>
+    <text x="596" y="211" class="box-copy">HDF5 分组与版本检查</text>
+    <text x="596" y="238" class="box-copy">· 按 phase / slice 惰性读取</text>
+    <text x="596" y="263" class="box-copy">· 百分位自动调窗</text>
+    <text x="596" y="288" class="box-copy">· Mask 独立图层</text>
+    <text x="596" y="313" class="box-copy">· 内容能力探测</text>
+  </g>
+  <g>
+    <rect x="572" y="366" width="248" height="88" rx="12" class="future"/>
+    <text x="596" y="398" class="box-title">医学坐标与值域</text>
+    <text x="596" y="425" class="box-copy">Affine · Orientation · HU</text>
+  </g>
+
+  <text x="874" y="128" class="section">医生阅片工作台</text>
+  <g filter="url(#shadow)">
+    <rect x="874" y="148" width="350" height="306" rx="14" class="implemented"/>
+    <text x="900" y="181" class="box-title">Vue Viewer Workspace</text>
+    <rect x="900" y="204" width="88" height="108" rx="8" fill="#101722" stroke="#334155"/>
+    <text x="918" y="232" style="font: 400 12px 'Microsoft YaHei', sans-serif; fill: #dbe6f4;">时相栏</text>
+    <rect x="1002" y="204" width="194" height="108" rx="8" fill="#05080d" stroke="#334155"/>
+    <text x="1058" y="262" style="font: 600 14px 'Microsoft YaHei', sans-serif; fill: #dbe6f4;">影像视口</text>
+    <text x="900" y="344" class="box-copy">切层 · 时相播放 · 缩放 · 调窗</text>
+    <text x="900" y="371" class="box-copy">Mask 叠加 · 元数据 · 快捷键</text>
+    <text x="900" y="408" class="small">路由级模块，已接入原 UI 权限与导航</text>
+    <text x="900" y="431" class="small">医生 / 管理员可用</text>
+  </g>
+
+  <path d="M232 192 H286" class="line"/>
+  <path d="M518 244 H572" class="line"/>
+  <path d="M820 244 H874" class="line"/>
+  <path d="M232 299 C260 299 260 410 286 410" class="line-muted"/>
+  <path d="M518 410 H572" class="line-muted"/>
+  <path d="M696 366 V340" class="line-muted"/>
+
+  <text x="56" y="520" class="section">最终软件扩展服务</text>
+  <g>
+    <rect x="56" y="544" width="214" height="112" rx="12" class="future"/>
+    <text x="80" y="578" class="box-title">高级渲染</text>
+    <text x="80" y="606" class="box-copy">Cornerstone / VTK</text>
+    <text x="80" y="631" class="small">MPR · 测量 · Preset</text>
+  </g>
+  <g>
+    <rect x="294" y="544" width="214" height="112" rx="12" class="future"/>
+    <text x="318" y="578" class="box-title">可注册图层</text>
+    <text x="318" y="606" class="box-copy">Mask · IGTV · 轨迹</text>
+    <text x="318" y="631" class="small">标注 · 命中测试 · 配色</text>
+  </g>
+  <g>
+    <rect x="532" y="544" width="214" height="112" rx="12" class="future"/>
+    <text x="556" y="578" class="box-title">桌面文件服务</text>
+    <text x="556" y="606" class="box-copy">Electron 本地句柄</text>
+    <text x="556" y="631" class="small">流式读取 · 缓存 · 恢复</text>
+  </g>
+  <g>
+    <rect x="770" y="544" width="214" height="112" rx="12" class="future"/>
+    <text x="794" y="578" class="box-title">诊断工作流</text>
+    <text x="794" y="606" class="box-copy">对比 · 报告 · 审核</text>
+    <text x="794" y="631" class="small">签名 · 审计日志</text>
+  </g>
+  <g>
+    <rect x="1008" y="544" width="216" height="112" rx="12" class="future"/>
+    <text x="1032" y="578" class="box-title">合规与安全</text>
+    <text x="1032" y="606" class="box-copy">权限 · 脱敏 · 追踪</text>
+    <text x="1032" y="631" class="small">临床验证 · 生命周期</text>
+  </g>
+
+  <path d="M1049 454 V494 H163 V544" class="line-muted"/>
+  <path d="M1049 494 H401 V544" class="line-muted"/>
+  <path d="M1049 494 H639 V544" class="line-muted"/>
+  <path d="M1049 494 H877 V544" class="line-muted"/>
+  <path d="M1049 494 H1116 V544" class="line-muted"/>
+
+  <rect x="56" y="700" width="18" height="4" rx="2" fill="#3b82f6"/>
+  <text x="84" y="706" class="small">当前已实现</text>
+  <line x1="190" y1="702" x2="214" y2="702" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 5"/>
+  <text x="224" y="706" class="small">下一阶段扩展</text>
+</svg>

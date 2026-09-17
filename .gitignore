@@ -1,0 +1,46 @@
+# Node (CodexBridge)
+backend/wx/
+backend/wx/node_modules/
+backend/wx/dist/
+backend/wx/.codexbridge/
+backend/wx/.env
+
+# Frontend build output and dependencies
+frontend/node_modules/
+frontend/dist/
+frontend/release/
+frontend/.vite/
+
+# Packaged artifacts
+backend-dist/
+build/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# IDE
+.idea/
+.superpowers/
+
+# Local configuration and credentials
+.env
+.env.*
+!frontend/.env.standalone
+*.pem
+*.key
+
+# Medical data and local databases
+*.dcm
+*.dicom
+*.nii
+*.nii.gz
+*.tici
+*.sqlite
+*.sqlite3
+*.db
+*.pth
+*.pt
+backend/data/

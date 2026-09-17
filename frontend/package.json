@@ -1,0 +1,80 @@
+{
+  "name": "lungtic",
+  "version": "0.1.0",
+  "description": "Standalone viewer for LungTic temporal medical imaging files",
+  "author": "LungTic Team",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "build:viewer": "vue-tsc && vite build --mode standalone",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "npm run build:viewer && electron-builder --win nsis",
+    "package:viewer": "powershell -ExecutionPolicy Bypass -File scripts/package-viewer.ps1"
+  },
+  "dependencies": {
+    "@cornerstonejs/core": "^4.22.13",
+    "@cornerstonejs/dicom-image-loader": "^4.22.13",
+    "@cornerstonejs/tools": "^4.22.13",
+    "@vicons/ionicons5": "^0.12.0",
+    "axios": "^1.7.0",
+    "dicom-parser": "^1.8.21",
+    "echarts": "^6.1.0",
+    "naive-ui": "^2.39.0",
+    "pinia": "^2.2.0",
+    "three": "^0.184.0",
+    "vue": "^3.5.0",
+    "vue-echarts": "^8.0.1",
+    "vue-router": "^4.4.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.184.1",
+    "@vitejs/plugin-vue": "^5.1.0",
+    "concurrently": "^9.0.0",
+    "electron": "^32.0.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.5.0",
+    "vite": "^5.4.0",
+    "vue-tsc": "^2.1.0",
+    "wait-on": "^8.0.0"
+  },
+  "build": {
+    "appId": "com.lungtic.tici.viewer",
+    "productName": "LungTic TICI Viewer",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend-dist/lungtic-viewer-backend",
+        "to": "backend"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "electron/icon.ico",
+      "artifactName": "LungTic-TICI-Viewer-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "LungTic TICI Viewer"
+    }
+  }
+}
