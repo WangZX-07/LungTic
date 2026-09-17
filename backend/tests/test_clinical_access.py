@@ -478,6 +478,47 @@ def test_ciphertext_is_bound_to_patient_and_storage_key(api):
         db.rollback()
 
 
+def test_segmentation_writes_saved_masks_to_tici(api, monkeypatch):
+    import numpy as np
+    from routers import segmentation
+    from tici import TiciReader, TiciWriter
+
+    client, _, ids, headers, tmp_path = api
+    dcm_dir = tmp_path / "dicom"
+    meta = FileMetaDataset()
+    meta.TransferSyntaxUID = ExplicitVRLittleEndian
+    ds = FileDataset(str(dcm_dir / "sample.dcm"), {}, file_meta=meta, preamble=b"\0" * 128)
+    ds.Rows, ds.Columns = 2, 2
+    ds.BitsAllocated, ds.BitsStored, ds.HighBit = 16, 16, 15
+    ds.PixelRepresentation, ds.SamplesPerPixel = 0, 1
+    ds.PhotometricInterpretation = "MONOCHROME2"
+    ds.PixelData = np.array([[0, 1], [2, 3]], dtype=np.uint16).tobytes()
+    ds.save_as(str(dcm_dir / "sample.dcm"))
+
+    class Engine:
+        def ensure_segmentation_loaded(self):
+            pass
+        def segment_slice(self, image):
+            return np.ones(image.shape, dtype=np.uint8)
+
+    monkeypatch.setattr(segmentation, "DICOM_DIR", str(dcm_dir))
+    monkeypatch.setattr(segmentation, "TICI_DIR", str(tmp_path))
+    monkeypatch.setattr(segmentation, "get_engine", lambda: Engine())
+    tici_path = tmp_path / f"study_{ids['study']}.tici"
+    with TiciWriter(str(tici_path), "w") as writer:
+        writer.write_metadata({}, {"phase_count": 1})
+        writer.write_phase_images(0, np.zeros((1, 2, 2), dtype=np.float32))
+
+    response = client.post(
+        "/api/segmentation/run", headers=headers("doctor_a"),
+        json={"study_id": ids["study"]},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["slices_processed"] == 1
+    with TiciReader(str(tici_path)) as reader:
+        np.testing.assert_array_equal(reader.get_phase_masks(0), np.ones((1, 2, 2), dtype=np.uint8))
+
+
 def test_admin_management_lists_are_role_guarded(api):
     client, _, ids, headers, _ = api
     paths = [

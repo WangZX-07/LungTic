@@ -31,7 +31,7 @@ def from_dicom_dir(dicom_dir: str, output_path: str) -> str:
         raise ValueError(f"No .dcm files found in {dicom_dir}")
 
     # Parse metadata from first file
-    first_ds = pydicom.dcmread(dcm_files[0], force=True)
+    first_ds = pydicom.dcmread(dcm_files[0], force=True, stop_before_pixels=True)
 
     patient = {
         "patient_id": str(getattr(first_ds, "PatientID", "UNKNOWN")),
@@ -51,41 +51,37 @@ def from_dicom_dir(dicom_dir: str, output_path: str) -> str:
 
     slice_thickness = float(getattr(first_ds, "SliceThickness", 1.0))
 
-    # Group all slices by InstanceNumber % 10 (phase)
+    # Keep only paths and metadata; scan one image at a time for the global range.
     slices_info = []
+    pmin, pmax = float("inf"), float("-inf")
     for path in dcm_files:
         ds = pydicom.dcmread(path, force=True)
         inst = int(getattr(ds, "InstanceNumber", 0))
         sloc = float(getattr(ds, "SliceLocation", 0))
+        pixels = ds.pixel_array
+        pmin = min(pmin, float(pixels.min()))
+        pmax = max(pmax, float(pixels.max()))
         slices_info.append({
             "path": path,
-            "instance": inst,
             "phase": inst % 10,
             "z": sloc,
-            "pixels": ds.pixel_array.astype(np.float32),
         })
 
-    # Normalize all pixels to [0, 1]
-    all_pixels = np.concatenate([s["pixels"].ravel() for s in slices_info])
-    pmin, pmax = all_pixels.min(), all_pixels.max()
-    if pmax > pmin:
-        for s in slices_info:
-            s["pixels"] = (s["pixels"] - pmin) / (pmax - pmin)
-
-    # Group by phase
     phases: dict[int, list[dict]] = {}
-    for s in slices_info:
-        p = s["phase"]
-        if p not in phases:
-            phases[p] = []
-        phases[p].append(s)
+    for item in slices_info:
+        phases.setdefault(item["phase"], []).append(item)
+    for phase_slices in phases.values():
+        phase_slices.sort(key=lambda item: item["z"])
 
-    # Sort each phase by z position
-    for p in phases:
-        phases[p].sort(key=lambda x: x["z"])
+    max_slices = max(len(items) for items in phases.values())
+    slice_locations = sorted(set(item["z"] for item in slices_info))
 
-    max_slices = max(len(v) for v in phases.values())
-    slice_locations = sorted(set(s["z"] for s in slices_info))
+    def normalized_pixels(path: str) -> np.ndarray:
+        pixels = pydicom.dcmread(path, force=True).pixel_array.astype(np.float32)
+        if pmax > pmin:
+            pixels -= pmin
+            pixels /= pmax - pmin
+        return pixels
 
     study = {
         "study_uid": str(getattr(first_ds, "StudyInstanceUID", uuid.uuid4().hex)),
@@ -114,7 +110,7 @@ def from_dicom_dir(dicom_dir: str, output_path: str) -> str:
         for phase_idx in sorted(phases.keys()):
             phase_slices = phases[phase_idx]
             # Build 3D volume (Z, H, W)
-            volume = np.stack([s["pixels"] for s in phase_slices], axis=0)
+            volume = np.stack([normalized_pixels(item["path"]) for item in phase_slices], axis=0)
             w.write_phase_images(phase_idx, volume)
         w.write_provenance(provenance)
 
@@ -129,11 +125,11 @@ def from_nifti(nifti_path: str, output_path: str) -> str:
     import nibabel as nib
 
     img = nib.load(nifti_path)
-    data = img.get_fdata()
     header = img.header
 
-    nx, ny, nz = data.shape[:3]
-    nt = data.shape[3] if len(data.shape) > 3 else 1
+    nx, ny, nz = img.shape[:3]
+    has_time_axis = len(img.shape) > 3
+    nt = img.shape[3] if has_time_axis else 1
 
     zooms = header.get_zooms()
     sx, sy, sz = zooms[:3]
@@ -158,10 +154,16 @@ def from_nifti(nifti_path: str, output_path: str) -> str:
         "slice_locations": [float(i * sz) for i in range(nz)],
     }
 
-    # Normalize to [0, 1]
-    dmin, dmax = data.min(), data.max()
-    if dmax > dmin:
-        data = (data - dmin) / (dmax - dmin)
+    # ArrayProxy slicing reads one phase at a time, including compressed NIfTI.
+    def read_phase(t: int) -> np.ndarray:
+        volume = img.dataobj[:, :, :, t] if has_time_axis else img.dataobj[:, :, :]
+        return np.array(volume, dtype=np.float32, copy=True)
+
+    dmin, dmax = float("inf"), float("-inf")
+    for t in range(nt):
+        phase = read_phase(t)
+        dmin = min(dmin, float(phase.min()))
+        dmax = max(dmax, float(phase.max()))
 
     provenance = {
         "source_type": "nifti",
@@ -174,14 +176,12 @@ def from_nifti(nifti_path: str, output_path: str) -> str:
     with TiciWriter(output_path, "w") as w:
         w.write_metadata(patient, study)
         for t in range(nt):
-            if nt > 1:
-                volume = data[:, :, :, t]
-            else:
-                volume = data[:, :, :]
-            # NIfTI arrays are (X, Y, Z); TICI phase volumes are
-            # (Z, rows/Y, cols/X), matching the DICOM conversion path.
-            volume = np.transpose(volume, (2, 1, 0)).astype(np.float32)
-            w.write_phase_images(t, volume)
+            volume = read_phase(t)
+            if dmax > dmin:
+                volume -= dmin
+                volume /= dmax - dmin
+            # NIfTI uses (X, Y, Z); TICI uses (Z, Y, X).
+            w.write_phase_images(t, np.transpose(volume, (2, 1, 0)))
         w.write_provenance(provenance)
 
     return output_path

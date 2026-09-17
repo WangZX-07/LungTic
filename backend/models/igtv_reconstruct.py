@@ -5,48 +5,39 @@ ITV volume, then generates a 3D mesh via Marching Cubes.
 """
 
 import numpy as np
-from typing import Optional
+from typing import Iterable, Optional
 
 
 def fuse_phase_masks(
-    masks: list[np.ndarray],
+    masks: Iterable[np.ndarray],
     method: str = "union",
 ) -> np.ndarray:
-    """Fuse segmentation masks from multiple phases into ITV.
-
-    Args:
-        masks: list of (D, H, W) binary masks from each phase
-        method: fusion strategy
-            - "union": logical OR (standard IGTV)
-            - "majority": voxel included if >50% phases have tumor
-
-    Returns:
-        (D, H, W) fused binary ITV mask
-    """
-    if not masks:
-        raise ValueError("No masks provided")
-
-    # Ensure all masks have same shape
-    shapes = {m.shape for m in masks}
-    if len(shapes) > 1:
-        # Pad/resize to max dimensions
-        max_shape = tuple(max(s) for s in zip(*shapes))
-        padded = []
-        for m in masks:
-            pad_width = [(0, max_shape[i] - m.shape[i]) for i in range(3)]
-            padded.append(np.pad(m, pad_width))
-        masks = padded
-
-    stack = np.stack(masks, axis=0).astype(np.float32)  # (N_phases, D, H, W)
-
-    if method == "union":
-        itv = (stack.sum(axis=0) > 0).astype(np.uint8)
-    elif method == "majority":
-        itv = (stack.sum(axis=0) > len(masks) / 2).astype(np.uint8)
-    else:
+    """Fuse phase volumes one at a time, padding only the accumulator if needed."""
+    if method not in {"union", "majority"}:
         raise ValueError(f"Unknown fusion method: {method}")
 
-    return itv
+    result = None
+    count = 0
+    for mask in masks:
+        if mask.ndim != 3:
+            raise ValueError("Phase mask must be a 3D volume")
+        if result is None:
+            result = np.zeros(mask.shape, dtype=bool if method == "union" else np.uint16)
+        elif any(mask.shape[i] > result.shape[i] for i in range(3)):
+            padding = [(0, max(0, mask.shape[i] - result.shape[i])) for i in range(3)]
+            result = np.pad(result, padding)
+        region = result[tuple(slice(0, size) for size in mask.shape)]
+        if method == "union":
+            np.logical_or(region, mask > 0, out=region)
+        else:
+            region += mask > 0
+        count += 1
+
+    if result is None:
+        raise ValueError("No masks provided")
+    if method == "majority":
+        result = result > count / 2
+    return result.astype(np.uint8)
 
 
 def marching_cubes_mesh(

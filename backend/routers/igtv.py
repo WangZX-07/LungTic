@@ -45,7 +45,7 @@ def reconstruct_igtv(
         .all()
     )
 
-    phase_masks = []
+    phase_mask_paths = []
     for series in series_list:
         segs = (
             db.query(Segmentation)
@@ -54,27 +54,21 @@ def reconstruct_igtv(
             .order_by(Slice.z_position)
             .all()
         )
+        paths = [
+            os.path.join(DICOM_DIR, seg.mask_path)
+            for seg in segs if seg.mask_path and os.path.exists(os.path.join(DICOM_DIR, seg.mask_path))
+        ]
+        if paths:
+            phase_mask_paths.append(paths)
 
-        if not segs:
-            continue
-
-        # Stack slices into 3D volume
-        slices_3d = []
-        for seg in segs:
-            mask_path = os.path.join(DICOM_DIR, seg.mask_path) if seg.mask_path else ""
-            if os.path.exists(mask_path):
-                mask = np.load(mask_path)
-                slices_3d.append(mask)
-
-        if slices_3d:
-            volume = np.stack(slices_3d, axis=0)  # (D, H, W)
-            phase_masks.append(volume)
-
-    if not phase_masks:
+    if not phase_mask_paths:
         raise HTTPException(400, "No segmentation masks found. Run segmentation first.")
 
-    # Fuse all phase masks into ITV
-    itv_mask = fuse_phase_masks(phase_masks, method="union")
+    def phase_volumes():
+        for paths in phase_mask_paths:
+            yield np.stack([np.load(path) for path in paths], axis=0)
+
+    itv_mask = fuse_phase_masks(phase_volumes(), method="union")
 
     # Compute volume
     spacing = (1.0, 1.0, 1.0)  # mm, default 鈥?can be extracted from DICOM
@@ -134,7 +128,7 @@ def reconstruct_igtv(
         "status": "completed",
         "study_id": req.study_id,
         "volume_cc": round(volume_cc, 2),
-        "phases_used": len(phase_masks),
+        "phases_used": len(phase_mask_paths),
         "mesh_path": rel_mesh_path,
         "mask_path": rel_mask_path,
     }

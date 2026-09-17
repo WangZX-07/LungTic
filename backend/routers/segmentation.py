@@ -61,12 +61,12 @@ def run_segmentation(
     total_processed = 0
     dice_sum = 0.0
 
-    # Per-phase mask storage for .tici append
-    phase_masks_dict: dict[int, list[np.ndarray]] = {}
+    # Retain paths rather than all phase volumes in memory.
+    phase_mask_paths: dict[int, list[str]] = {}
 
     for series in series_list:
         slices = db.query(Slice).filter(Slice.series_id == series.id).order_by(Slice.z_position).all()
-        phase_masks = []
+        mask_paths = []
 
         for slc in slices:
             # Load DICOM image
@@ -113,22 +113,22 @@ def run_segmentation(
 
             total_processed += 1
             dice_sum += dice
-            phase_masks.append(mask)
+            mask_paths.append(mask_path)
 
-        if phase_masks:
-            phase_masks_dict[series.phase_index] = phase_masks
+        if mask_paths:
+            phase_mask_paths[series.phase_index] = mask_paths
 
     db.commit()
 
     # Append masks to .tici file if it exists
     tici_path = _get_tici_path(req.study_id)
-    if os.path.exists(tici_path) and phase_masks_dict:
+    if os.path.exists(tici_path) and phase_mask_paths:
         try:
             sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
             from tici import TiciWriter
             with TiciWriter(tici_path, "a") as w:
-                for phase_idx, masks_list in phase_masks_dict.items():
-                    masks_vol = np.stack(masks_list, axis=0).astype(np.uint8)
+                for phase_idx, paths in phase_mask_paths.items():
+                    masks_vol = np.stack([np.load(path) for path in paths], axis=0).astype(np.uint8, copy=False)
                     w.append_phase_masks(phase_idx, masks_vol)
         except Exception:
             pass  # Silently skip tici append on failure

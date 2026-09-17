@@ -1,6 +1,9 @@
 ﻿import os
 import tempfile
 
+# NumPy's default BLAS worker pool can reserve hundreds of MB while idle.
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
 # Starlette may spool multipart uploads before a route can encrypt them.
 # Keep that plaintext staging area under the explicitly configured private data root.
 _data_root = os.getenv("LUNGTIC_DATA_DIR")

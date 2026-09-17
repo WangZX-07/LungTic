@@ -335,12 +335,17 @@ class TestTiciConverter(unittest.TestCase):
         dicom_dir = os.path.join(self.tmpdir, "dicom")
         os.makedirs(dicom_dir)
 
-        # Create 10 DICOM files (one per phase, same z=0)
+        # Create 10 DICOM files (one per phase, same z=0).
+        paths = []
         for i in range(10):
-            self._create_minimal_dicom(
-                os.path.join(dicom_dir, f"slice_{i:04d}.dcm"),
-                instance_number=i,
-            )
+            path = os.path.join(dicom_dir, f"slice_{i:04d}.dcm")
+            self._create_minimal_dicom(path, instance_number=i)
+            paths.append(path)
+
+        import pydicom
+        source = [pydicom.dcmread(path).pixel_array.astype(np.float32) for path in paths]
+        lower = min(float(pixels.min()) for pixels in source)
+        upper = max(float(pixels.max()) for pixels in source)
 
         output = os.path.join(self.tmpdir, "output.tici")
         result = from_dicom_dir(dicom_dir, output)
@@ -351,6 +356,9 @@ class TestTiciConverter(unittest.TestCase):
             self.assertEqual(meta.patient.patient_id, "TEST001")
             self.assertEqual(meta.study.modality, "CT")
             self.assertEqual(r.phase_count, 10)  # instance_number % 10 => each unique
+            for phase, pixels in enumerate(source):
+                expected = (pixels - lower) / (upper - lower)
+                np.testing.assert_allclose(r.get_phase_images(phase)[0], expected)
 
     def test_from_dicom_dir_empty_raises(self):
         """Empty DICOM directory raises ValueError."""
@@ -390,6 +398,21 @@ class TestTiciConverter(unittest.TestCase):
             np.testing.assert_allclose(meta.study.pixel_spacing, [2.5, 1.5])
             self.assertEqual(phase_0.shape, (6, 5, 4))
             np.testing.assert_allclose(phase_0, expected_phase_0)
+
+    def test_from_nifti_singleton_time_axis(self):
+        import nibabel as nib
+        from tici.converter import from_nifti
+
+        data = np.arange(4 * 5 * 6, dtype=np.float32).reshape(4, 5, 6, 1)
+        path = os.path.join(self.tmpdir, "single_phase.nii")
+        nib.save(nib.Nifti1Image(data, np.eye(4)), path)
+        output = os.path.join(self.tmpdir, "single_phase.tici")
+        from_nifti(path, output)
+
+        expected = np.transpose(data[:, :, :, 0] / (data.max() - data.min()), (2, 1, 0))
+        with TiciReader(output) as reader:
+            self.assertEqual(reader.phase_count, 1)
+            np.testing.assert_allclose(reader.get_phase_images(0), expected)
 
 
 if __name__ == "__main__":

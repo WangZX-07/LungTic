@@ -9,7 +9,6 @@ import base64
 import binascii
 import hashlib
 import hmac
-import io
 import json
 import os
 import re
@@ -153,8 +152,8 @@ def _unwrap_data_key(record, keys: dict[str, bytes]) -> bytes:
         raise IntegrityFailure("Record data key authentication failed") from exc
 
 
-def verify_record(record, path: Path, *, collect_plaintext: bool = False) -> bytes | None:
-    """Authenticate the entire file and compare both SHA-256 values before returning bytes."""
+def verify_record(record, path: Path, *, sink: BinaryIO | None = None) -> None:
+    """Authenticate the entire file; optionally write plaintext to a file-like sink."""
     if record.encryption_version != 1:
         raise IntegrityFailure("Unencrypted legacy record")
     _, keys = load_keyring()
@@ -168,23 +167,21 @@ def verify_record(record, path: Path, *, collect_plaintext: bool = False) -> byt
         decryptor.authenticate_additional_data(_aad("file", record.patient_id, record.storage_key))
         plain_hash = hashlib.sha256()
         cipher_hash = hashlib.sha256()
-        result = io.BytesIO() if collect_plaintext else None
         with path.open("rb") as source:
             while chunk := source.read(CHUNK_BYTES):
                 cipher_hash.update(chunk)
                 plaintext = decryptor.update(chunk)
                 plain_hash.update(plaintext)
-                if result is not None:
-                    result.write(plaintext)
+                if sink is not None:
+                    sink.write(plaintext)
         tail = decryptor.finalize()
         plain_hash.update(tail)
-        if result is not None:
-            result.write(tail)
+        if sink is not None:
+            sink.write(tail)
         if not hmac.compare_digest(plain_hash.hexdigest(), record.sha256 or ""):
             raise IntegrityFailure("Record plaintext SHA-256 mismatch")
         if not hmac.compare_digest(cipher_hash.hexdigest(), record.ciphertext_sha256 or ""):
             raise IntegrityFailure("Record ciphertext SHA-256 mismatch")
-        return result.getvalue() if result is not None else None
     except (InvalidTag, ValueError, TypeError, OSError) as exc:
         raise IntegrityFailure("Record integrity verification failed") from exc
 

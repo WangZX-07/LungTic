@@ -26,8 +26,8 @@
     </n-alert>
     <n-tabs v-model:value="activeTab" type="line" animated>
       <n-tab-pane name="axial" tab="横断面"><AxialView :study-id="studyId" :key="'axial-'+studyId" /></n-tab-pane>
-      <n-tab-pane name="cine" tab="4D 电影"><n-card size="small" title="4D Cine Player"><CinePlayer :phases="cinePhases" :current-phase-index="cinePhaseIndex" @update:current-phase-index="cinePhaseIndex = $event" /></n-card></n-tab-pane>
-      <n-tab-pane name="3d" tab="3D 靶区"><Target3DView :study-id="studyId" :key="'3d-'+studyId" /></n-tab-pane>
+      <n-tab-pane name="cine" tab="4D 电影"><n-card size="small" title="4D Cine Player"><CinePlayer v-if="activeTab === 'cine'" :phases="cinePhases" :current-phase-index="cinePhaseIndex" @update:current-phase-index="cinePhaseIndex = $event" /></n-card></n-tab-pane>
+      <n-tab-pane name="3d" tab="3D 靶区"><Target3DView v-if="activeTab === '3d'" :study-id="studyId" :key="'3d-'+studyId" /></n-tab-pane>
       <n-tab-pane name="trajectory" tab="运动轨迹"><TrajectoryView :study-id="studyId" :key="'traj-'+studyId" /></n-tab-pane>
     </n-tabs>
     <n-drawer v-model:show="showMetadata" :width="360" placement="right">

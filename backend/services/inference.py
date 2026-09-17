@@ -9,8 +9,6 @@ Supports:
 import os
 import numpy as np
 from typing import Optional
-from models.unet import AttentionUNet
-from models.lstm import TrajectoryLSTM
 
 
 class InferenceEngine:
@@ -32,7 +30,7 @@ class InferenceEngine:
 
     def load_builtin_segmentation(self):
         """Load built-in Attention U-Net."""
-        import torch
+        from models.unet import AttentionUNet
         self._seg_model = AttentionUNet(in_channels=1, out_channels=1)
         self._seg_model.to(self._device)
         self._seg_model.eval()
@@ -42,7 +40,7 @@ class InferenceEngine:
 
     def load_builtin_prediction(self):
         """Load built-in Trajectory LSTM."""
-        import torch
+        from models.lstm import TrajectoryLSTM
         self._pred_model = TrajectoryLSTM(input_size=3, hidden_size=64, pred_len=3)
         self._pred_model.to(self._device)
         self._pred_model.eval()
@@ -67,7 +65,12 @@ class InferenceEngine:
             is_onnx = True
         elif ext == ".pth":
             from models.onnx_loader import PyTorchModel
-            model_class = AttentionUNet if task_type == "segmentation" else TrajectoryLSTM
+            if task_type == "segmentation":
+                from models.unet import AttentionUNet
+                model_class = AttentionUNet
+            else:
+                from models.lstm import TrajectoryLSTM
+                model_class = TrajectoryLSTM
             model = PyTorchModel(file_path, model_class=model_class)
             model.load(device=self._device)
             is_onnx = False

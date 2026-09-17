@@ -2,13 +2,15 @@
 
 import os
 import re
+import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import BinaryIO
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -18,7 +20,7 @@ from models.db_models import ClinicalRecord, Study, User
 from routers.auth import get_current_user
 from services.access_control import audit, can_access_patient, require_patient, upload_department, patient_for_upload
 from services.record_crypto import (
-    IntegrityFailure, KeyUnavailable, MAX_RECORD_BYTES, seal_upload, verify_record,
+    CHUNK_BYTES, IntegrityFailure, KeyUnavailable, seal_upload, verify_record,
 )
 
 router = APIRouter(prefix="/api", tags=["clinical-records"])
@@ -248,14 +250,14 @@ def get_record(
     return _record_metadata(_record_for_user(db, current_user, record_id, "view_record"))
 
 
-def _verify_for_response(db: Session, user: User, record: ClinicalRecord, *, collect: bool):
+def _verify_for_response(
+    db: Session, user: User, record: ClinicalRecord, *, sink: BinaryIO | None = None
+) -> None:
     if record.encryption_version != 1:
         audit(db, user, "legacy_record_blocked", "record", record.id, record.patient_id, False)
         raise HTTPException(409, "Legacy record requires encryption migration")
     try:
-        plaintext = verify_record(
-            record, _storage_path(record.storage_key), collect_plaintext=collect
-        )
+        verify_record(record, _storage_path(record.storage_key), sink=sink)
     except KeyUnavailable as exc:
         audit(db, user, "record_key_unavailable", "record", record.id, record.patient_id, False)
         raise HTTPException(503, "Record encryption key is unavailable") from exc
@@ -263,7 +265,6 @@ def _verify_for_response(db: Session, user: User, record: ClinicalRecord, *, col
         audit(db, user, "record_integrity_failed", "record", record.id, record.patient_id, False)
         raise HTTPException(409, "Stored record failed integrity verification") from exc
     audit(db, user, "verify_record", "record", record.id, record.patient_id, True)
-    return plaintext
 
 
 @router.get("/records/{record_id}/integrity")
@@ -273,7 +274,7 @@ def check_record_integrity(
     current_user: User = Depends(get_current_user),
 ):
     record = _record_for_user(db, current_user, record_id, "check_record_integrity")
-    _verify_for_response(db, current_user, record, collect=False)
+    _verify_for_response(db, current_user, record)
     return {
         "id": record.id, "valid": True,
         "algorithm": "AES-256-GCM",
@@ -289,13 +290,29 @@ def download_record(
     current_user: User = Depends(get_current_user),
 ):
     record = _record_for_user(db, current_user, record_id, "download_record")
-    plaintext = _verify_for_response(db, current_user, record, collect=True)
-    return Response(
-        content=plaintext,
+    # Authenticate the full file before the first response byte is sent.
+    plaintext = tempfile.TemporaryFile(mode="w+b", dir=RECORD_DIR)
+    try:
+        _verify_for_response(db, current_user, record, sink=plaintext)
+        plaintext.seek(0)
+    except Exception:
+        plaintext.close()
+        raise
+
+    def chunks():
+        try:
+            while chunk := plaintext.read(CHUNK_BYTES):
+                yield chunk
+        finally:
+            plaintext.close()
+
+    return StreamingResponse(
+        chunks(),
         media_type=record.media_type,
         headers={
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
             "Content-Disposition": f"attachment; filename*=UTF-8''{quote(record.original_filename)}",
+            "Content-Length": str(record.size_bytes),
         },
     )

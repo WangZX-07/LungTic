@@ -99,7 +99,8 @@ let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
 let renderer: THREE.WebGLRenderer;
 let meshGroup: THREE.Group;
-let animationId: number;
+let animationId: number | null = null;
+let disposed = false;
 let isDragging = false;
 let prevMouse = { x: 0, y: 0 };
 let spherical = { theta: Math.PI / 4, phi: Math.PI / 3, radius: 200 };
@@ -156,9 +157,10 @@ function initScene() {
   renderer.domElement.addEventListener("wheel", onWheel);
 
   window.addEventListener("resize", onResize);
+  document.addEventListener("visibilitychange", onVisibilityChange);
 
   sceneReady.value = true;
-  animate();
+  scheduleRender();
 }
 
 function addPlaceholderGeometry() {
@@ -176,9 +178,11 @@ function addPlaceholderGeometry() {
 }
 
 function add体积Visualization(volumeCc: number, vertices?: number[][]) {
-  // Clear previous
+  // Dispose old GPU buffers and materials before replacing the model.
   while (meshGroup.children.length > 0) {
-    meshGroup.remove(meshGroup.children[0]);
+    const child = meshGroup.children[0];
+    meshGroup.remove(child);
+    disposeObject(child);
   }
 
   if (vertices && vertices.length > 0) {
@@ -236,6 +240,17 @@ function add体积Visualization(volumeCc: number, vertices?: number[][]) {
     });
     meshGroup.add(new THREE.Mesh(wireGeo, wireMat));
   }
+  scheduleRender();
+}
+
+function disposeObject(object: THREE.Object3D) {
+  object.traverse((child) => {
+    if (child instanceof THREE.Mesh || child instanceof THREE.Points || child instanceof THREE.Line) {
+      child.geometry.dispose();
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.forEach((material) => material.dispose());
+    }
+  });
 }
 
 function onMouseDown(e: MouseEvent) {
@@ -253,6 +268,7 @@ function onMouseMove(e: MouseEvent) {
   spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
 
   updateCameraPosition();
+  scheduleRender();
   prevMouse = { x: e.clientX, y: e.clientY };
 }
 
@@ -263,6 +279,7 @@ function onWheel(e: WheelEvent) {
   spherical.radius += e.deltaY * 0.5;
   spherical.radius = Math.max(40, Math.min(500, spherical.radius));
   updateCameraPosition();
+  scheduleRender();
 }
 
 function updateCameraPosition() {
@@ -281,20 +298,35 @@ function onResize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
+  scheduleRender();
 }
 
-function animate() {
-  animationId = requestAnimationFrame(animate);
-  if (autoRotate.value) {
-    spherical.theta += 0.005;
-    updateCameraPosition();
+function scheduleRender() {
+  if (disposed || animationId !== null || document.hidden) return;
+  animationId = requestAnimationFrame(() => {
+    animationId = null;
+    if (autoRotate.value) {
+      spherical.theta += 0.005;
+      updateCameraPosition();
+    }
+    renderer.render(scene, camera);
+    if (autoRotate.value) scheduleRender();
+  });
+}
+
+function onVisibilityChange() {
+  if (document.hidden && animationId !== null) {
+    cancelAnimationFrame(animationId);
+    animationId = null;
+  } else if (!document.hidden) {
+    scheduleRender();
   }
-  renderer.render(scene, camera);
 }
 
 function resetCamera() {
   spherical = { theta: Math.PI / 4, phi: Math.PI / 3, radius: 200 };
   updateCameraPosition();
+  scheduleRender();
 }
 
 function toggleWireframe() {
@@ -305,10 +337,12 @@ function toggleWireframe() {
       mat.wireframe = wireframe.value;
     }
   });
+  scheduleRender();
 }
 
 function toggleAutoRotate() {
   autoRotate.value = !autoRotate.value;
+  scheduleRender();
 }
 
 function updateOpacity() {
@@ -318,13 +352,14 @@ function updateOpacity() {
       mat.opacity = opacity.value;
     }
   });
+  scheduleRender();
 }
 
 async function loadIgtv() {
   loadingMesh.value = true;
   try {
     const res = await api.get(`/igtv/${props.studyId}`);
-    if (res.data) {
+    if (res.data && !disposed) {
       igtvData.value = res.data;
       if (igtvData.value.volume_cc) {
         await nextTick();
@@ -343,11 +378,12 @@ async function reconstruct() {
     message.success(res.data.message || "IGTV 重建已启动");
     // Poll for completion
     let retries = 0;
-    while (retries < 20) {
+    while (retries < 20 && !disposed) {
       await new Promise((r) => setTimeout(r, 3000));
+      if (disposed) break;
       try {
         const result = await api.get(`/igtv/${props.studyId}`);
-        if (result.data?.volume_cc) {
+        if (result.data?.volume_cc && !disposed) {
           igtvData.value = result.data;
           await nextTick();
           if (!sceneReady.value) initScene();
@@ -371,13 +407,20 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  cancelAnimationFrame(animationId);
+  disposed = true;
+  if (animationId !== null) cancelAnimationFrame(animationId);
   window.removeEventListener("resize", onResize);
+  document.removeEventListener("visibilitychange", onVisibilityChange);
   if (renderer) {
+    const canvas = renderer.domElement;
+    canvas.removeEventListener("mousedown", onMouseDown);
+    canvas.removeEventListener("mousemove", onMouseMove);
+    canvas.removeEventListener("mouseup", onMouseUp);
+    canvas.removeEventListener("wheel", onWheel);
+    disposeObject(scene);
     renderer.dispose();
-    if (containerRef.value && renderer.domElement) {
-      containerRef.value.removeChild(renderer.domElement);
-    }
+    renderer.forceContextLoss();
+    canvas.remove();
   }
 });
 </script>
