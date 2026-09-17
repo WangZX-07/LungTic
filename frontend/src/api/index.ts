@@ -1,4 +1,5 @@
 import axios from "axios";
+import { clientApiBaseUrl } from "./server";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
@@ -6,6 +7,7 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
+  config.baseURL = clientApiBaseUrl();
   const token = localStorage.getItem("lungtic_token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;

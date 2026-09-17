@@ -112,7 +112,7 @@ import {
 } from "naive-ui";
 import { PersonAddOutline, CloudUploadOutline } from "@vicons/ionicons5";
 import type { DataTableColumns } from "naive-ui";
-import api from "@/api";
+import api from "@/admin/api";
 
 const message = useMessage();
 const dialog = useDialog();

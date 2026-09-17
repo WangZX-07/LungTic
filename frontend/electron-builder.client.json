@@ -1,0 +1,35 @@
+{
+  "appId": "com.lungtic.clinical.client",
+  "productName": "LungTic 临床客户端",
+  "asar": true,
+  "directories": {
+    "output": "release-client"
+  },
+  "extraMetadata": {
+    "main": "electron/client-main.js"
+  },
+  "files": [
+    "dist/**/*",
+    "electron/client-main.js",
+    "package.json"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "icon": "electron/icon.ico",
+    "artifactName": "LungTic-Clinical-${version}-Setup.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "LungTic 临床客户端"
+  }
+}

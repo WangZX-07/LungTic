@@ -1,20 +1,23 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 
-type UserRole = "patient" | "doctor" | "admin";
+type UserRole = "patient" | "doctor" | "viewer_admin";
 const standaloneViewer = import.meta.env.VITE_STANDALONE_VIEWER === "true";
 
 const roleRoutes: Record<UserRole, string[]> = {
   patient: ["PatientList", "StudyWorkspace", "Settings"],
   doctor: ["PatientList", "StudyWorkspace", "TiciViewer", "ModelManager", "StudyComparison", "Settings"],
-  admin: ["PatientList", "StudyWorkspace", "TiciViewer", "ModelManager", "StudyComparison", "Settings", "UserManagement"],
+  viewer_admin: ["TiciViewer", "Settings"],
 };
 
 function getUserRole(): UserRole | null {
   const token = localStorage.getItem("lungtic_token");
   if (!token) return null;
   try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
-    return payload.role as UserRole;
+    const encoded = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, "=")));
+    if (payload.role === "doctor" || payload.role === "patient") return payload.role;
+    if (standaloneViewer && payload.role === "admin") return "viewer_admin";
+    return null;
   } catch {
     return null;
   }
@@ -65,11 +68,6 @@ const router = createRouter({
           name: "Settings",
           component: () => import("@/views/SettingsPage.vue"),
         },
-        {
-          path: "users",
-          name: "UserManagement",
-          component: () => import("@/views/UserManagement.vue"),
-        },
       ],
     },
   ],
@@ -77,6 +75,11 @@ const router = createRouter({
 
 router.beforeEach((to, _from, next) => {
   const token = localStorage.getItem("lungtic_token");
+  if (token && !getUserRole()) {
+    localStorage.removeItem("lungtic_token");
+    next({ name: "Login" });
+    return;
+  }
 
   if (to.name !== "Login" && !token) {
     next({ name: "Login", query: { redirect: to.fullPath } });
@@ -105,7 +108,7 @@ router.beforeEach((to, _from, next) => {
     if (role && roleRoutes[role]) {
       const nameStr = to.name as string;
       if (!roleRoutes[role].includes(nameStr)) {
-        next({ name: "PatientList" });
+        next({ name: standaloneViewer ? "TiciViewer" : "PatientList" });
         return;
       }
     }

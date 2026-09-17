@@ -1,7 +1,7 @@
 {
   "name": "lungtic",
   "version": "0.1.0",
-  "description": "Standalone viewer for LungTic temporal medical imaging files",
+  "description": "LungTic clinical desktop client, browser administration, and standalone viewer",
   "author": "LungTic Team",
   "private": true,
   "main": "electron/main.js",
@@ -11,7 +11,11 @@
     "build:viewer": "vue-tsc && vite build --mode standalone",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build:viewer && electron-builder --win nsis",
-    "package:viewer": "powershell -ExecutionPolicy Bypass -File scripts/package-viewer.ps1"
+    "package:viewer": "powershell -ExecutionPolicy Bypass -File scripts/package-viewer.ps1",
+    "dev:admin": "vite --config vite.admin.config.ts",
+    "build:admin": "vue-tsc && vite build --config vite.admin.config.ts",
+    "electron:client:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron electron/client-main.js\"",
+    "package:client": "powershell -ExecutionPolicy Bypass -File scripts/package-client.ps1"
   },
   "dependencies": {
     "@cornerstonejs/core": "^4.22.13",

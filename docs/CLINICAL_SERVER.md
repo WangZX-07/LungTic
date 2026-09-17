@@ -1,6 +1,6 @@
 # 中心病例服务：运行与权限
 
-本分支提供 FastAPI + MySQL 的病例服务 MVP。使用合成数据验证；上线处理真实病例前，仍需完成医院内网部署、安全评估、备份恢复和数据治理流程。独立的桌面 TICI 查看器由 `backend/viewer_main.py` 提供，其本地数据库与中心服务分开。
+本分支提供 FastAPI + MySQL 的病例服务 MVP。使用合成数据验证；上线处理真实病例前，仍需完成医院内网部署、安全评估、备份恢复和数据治理流程。医生/患者桌面客户端、浏览器管理后台和中心 API 分开构建；独立的桌面 TICI 查看器由 `backend/viewer_main.py` 提供，其本地数据库与中心服务分开。双端部署见 [客户端与管理后台](CLIENT_ADMIN_SPLIT.md)。
 
 ## 1. 初始化
 
@@ -12,7 +12,7 @@ PowerShell 示例（将占位值换成私有配置，不写进仓库）：
 $env:LUNGTIC_DB_URL = "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/lungtic"
 $env:LUNGTIC_JWT_SECRET = "<独立生成的至少32字符随机密钥>"
 $env:LUNGTIC_CAPTCHA_SECRET = "<另一条至少32字符随机密钥>"
-$env:LUNGTIC_CORS_ORIGINS = "http://127.0.0.1:5173"
+$env:LUNGTIC_CORS_ORIGINS = "app://lungtic,https://admin.example.org"
 $env:LUNGTIC_DATA_DIR = "D:\LungTic-private-data"
 $env:LUNGTIC_RECORD_ACTIVE_KEY_ID = "v1"
 $env:LUNGTIC_RECORD_KEYS_JSON = '{"v1":"<32字节随机密钥的Base64编码>"}'
@@ -23,11 +23,11 @@ python bootstrap_admin.py
 python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-`bootstrap_admin.py` 可重复运行，会更新指定管理员密码。服务入口 `main.py` 缺少数据库 URL、私有数据目录、JWT/验证码密钥、附件加密密钥或明确 CORS 来源时会拒绝启动。附件加密密钥须由安全的密钥管理系统保存并注入进程；丢失密钥后附件无法恢复。默认监听本机；跨机器访问需由部署方配置内网 HTTPS 反向代理、访问控制与文件权限。前端通过 `frontend` 下的 `npm run dev` 启动，开发代理指向本机 8000 端口。接口文档位于 `/docs`。
+`bootstrap_admin.py` 可重复运行，会更新指定管理员密码。服务入口 `main.py` 缺少数据库 URL、私有数据目录、JWT/验证码密钥、附件加密密钥或明确 CORS 来源时会拒绝启动。附件加密密钥须由安全的密钥管理系统保存并注入进程；丢失密钥后附件无法恢复。默认监听本机；跨机器访问需由部署方配置内网 HTTPS 反向代理、访问控制与文件权限。开发时在 `frontend` 下运行 `npm run dev` 启动临床客户端，运行 `npm run dev:admin` 启动管理后台；两个开发代理均指向本机 8000 端口。生产环境须将管理后台实际 HTTPS 域名加入 CORS 来源；开发调试另加 `http://127.0.0.1:5173` 和 `http://127.0.0.1:5174`。接口文档位于 `/docs`。
 
 ## 2. 设置科室与诊疗关系
 
-1. 管理员通过前端登录。中心服务登录必须提交图形验证码。
+1. 管理员通过独立浏览器管理后台登录；医生和患者通过桌面客户端登录。中心服务登录必须提交图形验证码。
 2. 管理员通过 `POST /api/auth/users` 创建医师账号，密码至少 12 字符；通过 `POST /api/organization/departments` 创建科室。
 3. 用 `PUT /api/organization/departments/{department_id}/members/{user_id}` 设置医师所属科室；科主任设置 `is_head=true`。只有有效成员关系生效。
 4. 医师在“患者列表”输入编码创建病例，或上传 DICOM、NIfTI、TICI。只有该科诊疗医师能写入自己获分配的患者。
@@ -82,6 +82,7 @@ python -m pip install -r requirements-dev.txt
 python -m pytest -q tests/test_clinical_access.py
 cd ..\frontend
 npm run build
+npm run build:admin
 ```
 
 本分支已做患者/检查/切片/TICI/AI 结果的对象级权限检查、附件认证加密与哈希校验、受控上传下载、科室与会诊授权、基础审计及前端入口。下一阶段仍需：异步与可续传的大文件处理、文件版本和更正流程、请求关联 ID、备份恢复演练、登录与上传限流、恶意文件扫描、前端令牌存储改造、机构身份集成及生产环境安全审查。当前实现不应直接用于真实患者数据的公开互联网部署。

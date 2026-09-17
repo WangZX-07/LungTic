@@ -8,6 +8,8 @@ backend/wx/.env
 # Frontend build output and dependencies
 frontend/node_modules/
 frontend/dist/
+frontend/dist-admin/
+frontend/release-client/
 frontend/release/
 frontend/.vite/
 

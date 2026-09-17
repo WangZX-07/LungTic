@@ -37,7 +37,7 @@
 import { ref, computed, h, onMounted } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { NLayout, NLayoutSider, NLayoutHeader, NLayoutContent, NMenu, NButton, NIcon, NTag, NSpace } from "naive-ui";
-import { PeopleOutline, CubeOutline, ScanOutline, SettingsOutline, PeopleCircleOutline, ChevronBack, ChevronForward, ArrowBack } from "@vicons/ionicons5";
+import { PeopleOutline, CubeOutline, ScanOutline, SettingsOutline, ChevronBack, ChevronForward, ArrowBack } from "@vicons/ionicons5";
 import { useAuthStore } from "@/stores/auth";
 import type { MenuOption } from "naive-ui";
 
@@ -66,7 +66,6 @@ const pageTitle = computed(() => {
   if (route.path === "/dashboard/tici-viewer") return "TICI 查看器";
   if (route.path === "/dashboard/models") return "模型管理";
   if (route.path === "/dashboard/patients") return "患者列表";
-  if (route.path === "/dashboard/users") return "用户管理";
   if (route.path === "/dashboard/settings") return "设置";
   return "LungTic";
 });
@@ -75,7 +74,6 @@ const fullMenuOptions: MenuOption[] = [
   { label: "患者列表", key: "/dashboard/patients", icon: () => h(NIcon, null, { default: () => h(PeopleOutline) }) },
   { label: "TICI 查看器", key: "/dashboard/tici-viewer", icon: () => h(NIcon, null, { default: () => h(ScanOutline) }) },
   { label: "模型管理", key: "/dashboard/models", icon: () => h(NIcon, null, { default: () => h(CubeOutline) }) },
-  { label: "用户管理", key: "/dashboard/users", icon: () => h(NIcon, null, { default: () => h(PeopleCircleOutline) }) },
   { label: "设置", key: "/dashboard/settings", icon: () => h(NIcon, null, { default: () => h(SettingsOutline) }) },
 ];
 
@@ -85,10 +83,8 @@ const visibleMenuOptions = computed(() => {
       m => m.key === "/dashboard/tici-viewer" || m.key === "/dashboard/settings",
     );
   }
-  if (auth.isAdmin) return fullMenuOptions;
   if (auth.isPatient) return fullMenuOptions.filter(m => m.key === "/dashboard/patients" || m.key === "/dashboard/settings");
-  // doctor
-  return fullMenuOptions.filter(m => m.key !== "/dashboard/users");
+  return fullMenuOptions;
 });
 
 function onMenuChange(key: string) { router.push(key); }

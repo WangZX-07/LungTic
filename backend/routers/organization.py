@@ -93,6 +93,24 @@ def create_department(
     return {"id": department.id, "name": department.name}
 
 
+@router.get("/departments/{department_id}/members")
+def list_members(
+    department_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    if not db.query(Department).filter(Department.id == department_id).first():
+        raise HTTPException(404, "Department not found")
+    rows = db.query(DepartmentMembership, User).join(
+        User, User.id == DepartmentMembership.user_id
+    ).filter(DepartmentMembership.department_id == department_id).order_by(User.username).all()
+    return [
+        {"user_id": user.id, "username": user.username, "is_head": member.is_head,
+         "active": member.active}
+        for member, user in rows
+    ]
+
+
 @router.put("/departments/{department_id}/members/{user_id}")
 def set_membership(
     department_id: int,
@@ -136,6 +154,24 @@ def list_patient_assignments(
     ]
 
 
+@router.get("/patients/{patient_id}/care-team")
+def list_care_team(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    if not db.query(Patient).filter(Patient.id == patient_id).first():
+        raise HTTPException(404, "Patient not found")
+    rows = db.query(PatientCareAssignment, User).join(
+        User, User.id == PatientCareAssignment.user_id
+    ).filter(PatientCareAssignment.patient_id == patient_id).order_by(User.username).all()
+    return [
+        {"user_id": user.id, "username": user.username,
+         "department_id": assignment.department_id, "active": assignment.active}
+        for assignment, user in rows
+    ]
+
+
 @router.put("/patients/{patient_id}/care-team/{user_id}")
 def set_care_assignment(
     patient_id: int,
@@ -174,6 +210,26 @@ def set_care_assignment(
     db.commit()
     audit(db, admin, "set_care_assignment", "patient", patient_id, patient_id, True)
     return {"patient_id": patient_id, "user_id": user_id, "department_id": req.department_id, "active": assignment.active}
+
+
+@router.get("/patients/{patient_id}/grants")
+def list_grants(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    if not db.query(Patient).filter(Patient.id == patient_id).first():
+        raise HTTPException(404, "Patient not found")
+    rows = db.query(AccessGrant, User).join(
+        User, User.id == AccessGrant.grantee_user_id
+    ).filter(AccessGrant.patient_id == patient_id).order_by(AccessGrant.id.desc()).all()
+    return [
+        {"id": grant.id, "grantee_user_id": user.id, "grantee_username": user.username,
+         "purpose": grant.purpose, "can_write": grant.can_write,
+         "starts_at": grant.starts_at, "expires_at": grant.expires_at,
+         "revoked_at": grant.revoked_at}
+        for grant, user in rows
+    ]
 
 
 @router.post("/patients/{patient_id}/grants")

@@ -476,3 +476,30 @@ def test_ciphertext_is_bound_to_patient_and_storage_key(api):
         with pytest.raises(IntegrityFailure):
             verify_record(record, path)
         db.rollback()
+
+
+def test_admin_management_lists_are_role_guarded(api):
+    client, _, ids, headers, _ = api
+    paths = [
+        f"/api/organization/departments/{ids['dept_a']}/members",
+        f"/api/organization/patients/{ids['patient_a']}/care-team",
+        f"/api/organization/patients/{ids['patient_a']}/grants",
+    ]
+    for path in paths:
+        assert client.get(path, headers=headers("doctor_a")).status_code == 403
+        assert client.get(path, headers=headers("patient_a")).status_code == 403
+        response = client.get(path, headers=headers("admin"))
+        assert response.status_code == 200, response.text
+    members = client.get(paths[0], headers=headers("admin")).json()
+    assert any(row["username"] == "head_a" and row["is_head"] for row in members)
+    care = client.get(paths[1], headers=headers("admin")).json()
+    assert any(row["username"] == "doctor_a" and row["active"] for row in care)
+    grant = client.post(
+        f"/api/organization/patients/{ids['patient_a']}/grants",
+        headers=headers("admin"),
+        json={"grantee_user_id": ids["doctor_b"], "purpose": "Review", "hours": 2},
+    )
+    assert grant.status_code == 200
+    listed = client.get(paths[2], headers=headers("admin")).json()
+    assert listed[0]["grantee_username"] == "doctor_b"
+    assert listed[0]["revoked_at"] is None

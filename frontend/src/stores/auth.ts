@@ -18,6 +18,9 @@ export const useAuthStore = defineStore("auth", () => {
       captcha_token: captchaToken || "",
       captcha_code: captchaCode || 0,
     });
+    if (res.data.role !== role || (role === "admin" && import.meta.env.VITE_STANDALONE_VIEWER !== "true")) {
+      throw new Error("此客户端不允许该角色登录");
+    }
     token.value = res.data.access_token;
     user.value = { username: res.data.username, role: res.data.role };
     localStorage.setItem("lungtic_token", token.value);
@@ -26,6 +29,11 @@ export const useAuthStore = defineStore("auth", () => {
 
   async function fetchMe() {
     const res = await api.get("/auth/me");
+    if (res.data.role !== "doctor" && res.data.role !== "patient"
+      && !(import.meta.env.VITE_STANDALONE_VIEWER === "true" && res.data.role === "admin")) {
+      logout();
+      throw new Error("此客户端不允许该角色登录");
+    }
     user.value = {
       username: res.data.username,
       role: res.data.role,

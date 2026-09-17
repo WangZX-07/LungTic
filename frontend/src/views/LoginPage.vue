@@ -5,6 +5,13 @@
       <h1 class="app-name">LungTic</h1>
       <p class="subtitle">4D 肺癌诊断与预测系统</p>
 
+      <div v-if="isPackagedClinicalClient" class="server-config">
+        <label for="server-origin">医院服务端地址</label>
+        <n-input id="server-origin" v-model:value="serverOrigin" placeholder="https://clinical.example.org" @update:value="serverReady = false" />
+        <n-button size="small" :disabled="!serverOrigin" @click="saveServer">连接服务端</n-button>
+        <span v-if="serverReady" class="server-ok">已配置</span>
+      </div>
+
       <n-form ref="formRef" :model="form" :rules="rules" size="large">
         <n-form-item path="role">
           <n-select v-model:value="form.role" :options="roleOptions" placeholder="选择角色" />
@@ -20,7 +27,7 @@
           </n-input>
         </n-form-item>
         <n-form-item>
-          <TextCaptcha ref="captchaRef" @update:token="captchaToken = $event" @update:code="captchaCode = $event" />
+          <TextCaptcha v-if="serverReady" ref="captchaRef" @update:token="captchaToken = $event" @update:code="captchaCode = $event" />
         </n-form-item>
       </n-form>
 
@@ -36,7 +43,7 @@
     </div>
 
     <div class="login-footer">
-      <span>LungTic v0.2.0</span>
+      <span>{{ standaloneViewer ? "LungTic 本地阅片器" : "LungTic 临床客户端" }}</span>
     </div>
 
     <ResetPasswordModal v-model:show="showResetModal" />
@@ -49,12 +56,14 @@ import { useRouter, useRoute } from "vue-router";
 import { NForm, NFormItem, NInput, NButton, NIcon, NSelect } from "naive-ui";
 import { PersonOutline, LockClosedOutline } from "@vicons/ionicons5";
 import { useAuthStore } from "@/stores/auth";
+import { getServerOrigin, isPackagedClinicalClient, saveServerOrigin } from "@/api/server";
 import TextCaptcha from "@/components/TextCaptcha.vue";
 import ResetPasswordModal from "@/components/ResetPasswordModal.vue";
 
 const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
+const standaloneViewer = import.meta.env.VITE_STANDALONE_VIEWER === "true";
 const loading = ref(false);
 const error = ref("");
 const captchaRef = ref<any>(null);
@@ -62,11 +71,23 @@ const captchaToken = ref("");
 const captchaCode = ref("");
 const showResetModal = ref(false);
 const pwdRef = ref<any>(null);
+const serverOrigin = ref(getServerOrigin());
+const serverReady = ref(!isPackagedClinicalClient || !!serverOrigin.value);
+
+function saveServer() {
+  try {
+    serverOrigin.value = saveServerOrigin(serverOrigin.value);
+    serverReady.value = true;
+    error.value = "";
+  } catch (e: any) {
+    error.value = e.message;
+  }
+}
 
 const roleOptions = [
   { label: "医生", value: "doctor" },
   { label: "患者", value: "patient" },
-  { label: "管理员", value: "admin" },
+  ...(import.meta.env.VITE_STANDALONE_VIEWER === "true" ? [{ label: "本地阅片器管理员", value: "admin" }] : []),
 ];
 
 const form = ref({ username: "", password: "", role: "doctor" });
@@ -81,6 +102,7 @@ function focusPassword() {
 
 async function handleLogin() {
   error.value = "";
+  if (!serverReady.value) { error.value = "请先连接服务端"; return; }
   loading.value = true;
   try {
     await authStore.login(form.value.username, form.value.password, form.value.role, captchaToken.value, captchaCode.value);
@@ -90,7 +112,7 @@ async function handleLogin() {
         : "/dashboard");
     router.replace(redirect);
   } catch (e: any) {
-    error.value = e.response?.data?.detail || "登录失败，请检查用户名和密码";
+    error.value = e.response?.data?.detail || e.message || "登录失败，请检查用户名和密码";
     captchaRef.value?.refresh();
     captchaToken.value = "";
     captchaCode.value = "";
@@ -124,4 +146,9 @@ async function handleLogin() {
 .error { color: #EF4444; font-size: 13px; margin-top: 12px; background: #FEF2F2; padding: 8px 12px; border-radius: 6px; }
 .login-footer { position: absolute; bottom: 24px; color: rgba(255,255,255,0.6); font-size: 12px; z-index: 1; }
 .login-footer-links { margin-top: 12px; text-align: right; }
+.server-config { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; text-align: left; margin-bottom: 20px; }
+.server-config label { width: 100%; color: #334155; font-size: 13px; font-weight: 600; }
+.server-config :deep(.n-input) { flex: 1; min-width: 230px; }
+.server-ok { color: #15803d; font-size: 12px; }
+@media (max-width: 480px) { .login-card { width: calc(100vw - 32px); padding: 28px 24px; } }
 </style>

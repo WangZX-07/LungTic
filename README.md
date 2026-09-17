@@ -2,7 +2,7 @@
 
 ## 中心病例服务
 
-私有分支 `feat/clinical-records-server` 增加病例附件上传、科室与诊疗团队权限、限时会诊授权和访问审计。数据库迁移、密钥配置、管理员初始化及验证步骤见 [中心病例服务运行说明](docs/CLINICAL_SERVER.md)。中心服务启动时必须显式配置数据库 URL、私有数据目录、JWT/验证码密钥、病例附件加密密钥及前端来源。
+私有分支 `feat/clinical-records-server` 增加病例附件上传、科室与诊疗团队权限、限时会诊授权和访问审计。数据库迁移、密钥配置、管理员初始化及验证步骤见 [中心病例服务运行说明](docs/CLINICAL_SERVER.md)。医生/患者桌面端与浏览器管理后台的部署和后续计划见 [双端与中心服务](docs/CLIENT_ADMIN_SPLIT.md)。中心服务启动时必须显式配置数据库 URL、私有数据目录、JWT/验证码密钥、病例附件加密密钥及前端来源。
 
 ```powershell
 cd backend
@@ -14,7 +14,8 @@ python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```powershell
 cd frontend
 npm install
-npm run dev
+npm run dev          # 医生/患者客户端
+npm run dev:admin    # 浏览器管理后台
 ```
 
 ## TICI 查看器
