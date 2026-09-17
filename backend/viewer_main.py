@@ -1,6 +1,7 @@
 """Minimal local backend bundled with the TICI Viewer desktop app."""
 
 import os
+os.environ["LUNGTIC_LOCAL_VIEWER"] = "1"
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 

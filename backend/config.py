@@ -17,11 +17,15 @@ MODEL_DIR = os.path.join(UPLOAD_DIR, "models")
 DICOM_DIR = os.path.join(UPLOAD_DIR, "dicom")
 TICI_DIR = os.path.join(UPLOAD_DIR, "tici")
 TICI_VIEWER_DIR = os.path.join(TICI_DIR, "viewer")
+RECORD_DIR = os.path.join(UPLOAD_DIR, "records")
+SERVER_MODE = os.getenv("LUNGTIC_SERVER_MODE") == "1"
+CORS_ORIGINS = [origin.strip() for origin in os.getenv("LUNGTIC_CORS_ORIGINS", "http://127.0.0.1:5173").split(",") if origin.strip()]
 
 os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(DICOM_DIR, exist_ok=True)
 os.makedirs(TICI_DIR, exist_ok=True)
 os.makedirs(TICI_VIEWER_DIR, exist_ok=True)
+os.makedirs(RECORD_DIR, exist_ok=True)
 
 # SMTP Email config
 SMTP_HOST = os.getenv("LUNGTIC_SMTP_HOST", "smtp.qq.com")

@@ -3,33 +3,26 @@
 import os
 import io
 import base64
+import uuid
 import sys
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from database import get_db
 from routers.auth import get_current_user
 from models.db_models import User, Patient, Study, Series, Slice
-from services.dicom_parser import parse_dicom, store_dicom, group_slices_by_phase, parse_nifti, store_nifti
+from services.dicom_parser import parse_dicom, store_dicom, group_slices_by_phase, parse_nifti, study_storage_dir
+from services.access_control import patient_for_upload, upload_department, visible_patients, require_patient, require_study, audit
 from config import DICOM_DIR, TICI_DIR
 from datetime import datetime
 
 router = APIRouter(prefix="/api/dicom", tags=["dicom"])
 
 
-def check_patient_access(patient: Patient, current_user: User):
-    """Check if current user has access to this patient. Raises 403 if not."""
-    user_role = current_user.role.value if hasattr(current_user.role, "value") else current_user.role
-    if user_role in ("doctor", "admin"):
-        return True
-    # patient role: double matching
-    if patient.user_id == current_user.id:
-        return True
-    if current_user.patient_code and patient.patient_code == current_user.patient_code:
-        return True
-    raise HTTPException(status_code=403, detail="Access denied")
+def check_patient_access(patient: Patient, current_user: User, db: Session):
+    return require_patient(db, current_user, patient.id)
 
 
 def _create_tici_from_upload(study_id: int, study_uid: str, db: Session):
@@ -43,7 +36,7 @@ def _create_tici_from_upload(study_id: int, study_uid: str, db: Session):
             return
 
         # Load DICOM dir for this study
-        dicom_study_dir = os.path.join(DICOM_DIR, study_uid)
+        dicom_study_dir = os.path.join(DICOM_DIR, study_storage_dir(study_uid))
         if not os.path.isdir(dicom_study_dir):
             return
 
@@ -164,13 +157,15 @@ def _create_tici_from_upload(study_id: int, study_uid: str, db: Session):
 @router.post("/upload")
 def upload_dicom(
     files: list[UploadFile] = File(...),
-    patient_id_override: str = "",
+    patient_id_override: str = Form(""),
+    department_id: int | None = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Upload multiple DICOM files. Auto-parses metadata and stores slices."""
-    if not files:
-        raise HTTPException(400, "No files provided")
+    if not files or len(files) > 512:
+        raise HTTPException(400, "Upload 1-512 files")
+    department_id = upload_department(db, current_user, department_id)
 
     # Separate DICOM and NIfTI files
     dicom_files = []
@@ -182,17 +177,30 @@ def upload_dicom(
         else:
             dicom_files.append(file)
 
-    results = []
+    written_paths = []
+    if dicom_files and nifti_files:
+        raise HTTPException(400, "Upload DICOM and NIfTI in separate requests")
 
-    # Process DICOM files
-    if dicom_files:
-        results.extend(_process_dicom(dicom_files, db, current_user, patient_id_override))
+    try:
+        results = []
 
-    # Process NIfTI files
-    if nifti_files:
-        results.extend(_process_nifti(nifti_files, db, current_user, patient_id_override))
+        # Process DICOM files
+        if dicom_files:
+            results.extend(_process_dicom(dicom_files, db, current_user, patient_id_override, department_id, written_paths))
 
-    db.commit()
+        # Process NIfTI files
+        if nifti_files:
+            results.extend(_process_nifti(nifti_files, db, current_user, patient_id_override, department_id, written_paths))
+
+        db.commit()
+    except Exception:
+        db.rollback()
+        for stored in written_paths:
+            try:
+                os.remove(os.path.join(DICOM_DIR, stored))
+            except FileNotFoundError:
+                pass
+        raise
     total = sum(r.get("slice_count", 0) for r in results)
 
     # Auto-create .tici files for each study
@@ -201,27 +209,30 @@ def upload_dicom(
         study_uid = result_item.get("study_uid")
         if study_id and study_uid:
             _create_tici_from_upload(study_id, study_uid, db)
+        audit(db, current_user, "upload_imaging", "study", study_id, result_item.get("patient_id"), True)
 
     return {"status": "ok", "studies": results, "total_files": total}
 
 
-def _process_dicom(files, db, current_user, patient_id_override=""):
+def _process_dicom(files, db, current_user, patient_id_override="", department_id=0, written_paths=None):
     parsed = []
+    total_bytes = 0
     for file in files:
-        file_data = file.file.read()
-        tmp_path = os.path.join(DICOM_DIR, "_tmp.dcm")
-        os.makedirs(DICOM_DIR, exist_ok=True)
-        with open(tmp_path, "wb") as f:
-            f.write(file_data)
-
+        if not (file.filename or "").lower().endswith(".dcm"):
+            raise HTTPException(400, "Only .dcm and NIfTI files are accepted")
+        file_data = file.file.read(64 * 1024 * 1024 + 1)
+        total_bytes += len(file_data)
+        if len(file_data) > 64 * 1024 * 1024 or total_bytes > 512 * 1024 * 1024:
+            raise HTTPException(413, "DICOM upload exceeds size limit")
         try:
-            meta = parse_dicom(tmp_path)
-            meta["filename"] = file.filename or "unknown.dcm"
-            meta["size"] = len(file_data)
+            meta = parse_dicom(io.BytesIO(file_data))
+            if str(meta["patient_id"]).upper() == "UNKNOWN":
+                raise ValueError("DICOM PatientID is missing")
+            meta["filename"] = file.filename
+            meta["_content"] = file_data
             parsed.append(meta)
-        except Exception as e:
-            os.remove(tmp_path)
-            raise HTTPException(400, f"Failed to parse {file.filename}: {str(e)}")
+        except Exception:
+            raise HTTPException(400, "Invalid DICOM file")
 
     if not parsed:
         raise HTTPException(400, "No valid DICOM files")
@@ -241,22 +252,14 @@ def _process_dicom(files, db, current_user, patient_id_override=""):
         # Find or create patient
         search_code = patient_id_override if patient_id_override else first["patient_id"]
 
-        patient = db.query(Patient).filter(
-            Patient.patient_code == search_code
-        ).first()
-        if not patient:
-            patient = Patient(
-                patient_code=first["patient_id"],
-                gender=first["patient_sex"][:1] if first["patient_sex"] else None,
-                user_id=current_user.id,
-            )
-            db.add(patient)
-            db.flush()
-        elif patient.user_id is None:
-            patient.user_id = current_user.id
+        patient = patient_for_upload(
+            db, current_user, search_code, department_id, first["patient_sex"]
+        )
 
         # Find or create study
         study = db.query(Study).filter(Study.study_uid == study_uid).first()
+        if study and study.patient_id != patient.id:
+            raise HTTPException(409, "Study UID belongs to another patient")
         if not study:
             study_date = None
             if first["study_date"] and len(first["study_date"]) >= 8:
@@ -298,10 +301,12 @@ def _process_dicom(files, db, current_user, patient_id_override=""):
             series_slice_count = 0
             for s in phase_slices:
                 file_path = store_dicom(
-                    file_content=open(s.get("_tmp_path", ""), "rb").read() if s.get("_tmp_path") else b"",
+                    file_content=s["_content"],
                     filename=s["filename"],
                     study_uid=study_uid,
                 )
+                if written_paths is not None:
+                    written_paths.append(file_path)
                 slc = Slice(
                     series_id=series.id,
                     file_path=file_path,
@@ -316,6 +321,7 @@ def _process_dicom(files, db, current_user, patient_id_override=""):
         results.append({
             "study_uid": study_uid,
             "study_id": study.id,
+            "patient_id": patient.id,
             "phase_count": len(phases),
             "slice_count": len(slices),
         })
@@ -323,24 +329,28 @@ def _process_dicom(files, db, current_user, patient_id_override=""):
     return results
 
 
-def _process_nifti(files, db, current_user, patient_id_override=""):
+def _process_nifti(files, db, current_user, patient_id_override="", department_id=0, written_paths=None):
+    if not patient_id_override.strip():
+        raise HTTPException(400, "NIfTI upload requires patient_id_override")
     parsed = []
+    total_bytes = 0
     for file in files:
-        file_data = file.file.read()
-        safe_name = file.filename or "upload.nii.gz"
-        tmp_path = os.path.join(DICOM_DIR, safe_name)
+        file_data = file.file.read(512 * 1024 * 1024 + 1)
+        total_bytes += len(file_data)
+        if len(file_data) > 512 * 1024 * 1024 or total_bytes > 512 * 1024 * 1024:
+            raise HTTPException(413, "NIfTI upload exceeds size limit")
+        suffix = ".nii" if (file.filename or "").lower().endswith(".nii") else ".nii.gz"
+        tmp_path = os.path.join(DICOM_DIR, f"_nifti_{uuid.uuid4().hex}{suffix}")
         os.makedirs(DICOM_DIR, exist_ok=True)
-        with open(tmp_path, "wb") as f:
-            f.write(file_data)
-
         try:
-            slices = parse_nifti(tmp_path)
-            for s in slices:
-                s["filename"] = safe_name
-                s["_tmp_path"] = tmp_path
-            parsed.extend(slices)
-        except Exception as e:
-            raise HTTPException(400, f"Failed to parse {file.filename}: {str(e)}")
+            with open(tmp_path, "wb") as target:
+                target.write(file_data)
+            parsed.extend(parse_nifti(tmp_path))
+        except Exception:
+            raise HTTPException(400, "Invalid NIfTI file")
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
     if not parsed:
         raise HTTPException(400, "No valid NIfTI data")
@@ -358,21 +368,13 @@ def _process_nifti(files, db, current_user, patient_id_override=""):
         first = slices[0]
         search_code = patient_id_override if patient_id_override else first["patient_id"]
 
-        patient = db.query(Patient).filter(
-            Patient.patient_code == search_code
-        ).first()
-        if not patient:
-            patient = Patient(
-                patient_code=first["patient_id"],
-                gender=first["patient_sex"][:1] if first["patient_sex"] else "",
-                user_id=current_user.id,
-            )
-            db.add(patient)
-            db.flush()
-        elif patient.user_id is None:
-            patient.user_id = current_user.id
+        patient = patient_for_upload(
+            db, current_user, search_code, department_id, first["patient_sex"]
+        )
 
         study = db.query(Study).filter(Study.study_uid == study_uid).first()
+        if study and study.patient_id != patient.id:
+            raise HTTPException(409, "Study UID belongs to another patient")
         if not study:
             study = Study(
                 patient_id=patient.id,
@@ -416,6 +418,8 @@ def _process_nifti(files, db, current_user, patient_id_override=""):
                     filename=f"nifti_slice_{s['instance_number']}.raw",
                     study_uid=study_uid,
                 )
+                if written_paths is not None:
+                    written_paths.append(file_path)
                 slc = Slice(
                     series_id=series.id,
                     file_path=file_path,
@@ -430,6 +434,7 @@ def _process_nifti(files, db, current_user, patient_id_override=""):
         results.append({
             "study_uid": study_uid,
             "study_id": study.id,
+            "patient_id": patient.id,
             "phase_count": len(time_groups),
             "slice_count": len(slices),
         })
@@ -443,20 +448,8 @@ def list_patients(
     current_user: User = Depends(get_current_user),
 ):
     """List all patients accessible to the current user."""
-    user_role = current_user.role.value if hasattr(current_user.role, "value") else current_user.role
-    if user_role in ("doctor", "admin"):
-        patients = db.query(Patient).all()
-    else:
-        patients = (
-            db.query(Patient)
-            .filter(
-                (Patient.user_id == current_user.id) |
-                (Patient.patient_code == current_user.patient_code)
-                if current_user.patient_code
-                else Patient.user_id == current_user.id
-            )
-            .all()
-        )
+    patients = visible_patients(db, current_user).order_by(Patient.id).all()
+    audit(db, current_user, "list_patients", "patient", None, None, True)
 
     result = []
     for p in patients:
@@ -482,7 +475,7 @@ def list_studies(
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if not patient:
         raise HTTPException(404, "Patient not found")
-    check_patient_access(patient, current_user)
+    check_patient_access(patient, current_user, db)
 
     studies = db.query(Study).filter(Study.patient_id == patient_id).all()
     return [
@@ -491,7 +484,7 @@ def list_studies(
             "study_uid": s.study_uid,
             "study_date": str(s.study_date) if s.study_date else "",
             "phase_count": s.phase_count,
-            "tici_path": s.tici_path,
+            "has_tici": bool(s.tici_path and os.path.isfile(s.tici_path)),
         }
         for s in studies
     ]
@@ -504,12 +497,7 @@ def list_series(
     current_user: User = Depends(get_current_user),
 ):
     """List series (phases) for a study."""
-    study = db.query(Study).filter(Study.id == study_id).first()
-    if not study:
-        raise HTTPException(404, "Study not found")
-    patient = db.query(Patient).filter(Patient.id == study.patient_id).first()
-    if patient:
-        check_patient_access(patient, current_user)
+    require_study(db, current_user, study_id)
 
     series_list = (
         db.query(Series)
@@ -538,11 +526,7 @@ def list_slices(
     series = db.query(Series).filter(Series.id == series_id).first()
     if not series:
         raise HTTPException(404, "Series not found")
-    study = db.query(Study).filter(Study.id == series.study_id).first()
-    if study:
-        patient = db.query(Patient).filter(Patient.id == study.patient_id).first()
-        if patient:
-            check_patient_access(patient, current_user)
+    require_study(db, current_user, series.study_id)
 
     slices = (
         db.query(Slice)
@@ -555,7 +539,6 @@ def list_slices(
             "id": s.id,
             "slice_index": s.slice_index,
             "z_position": s.z_position,
-            "file_path": s.file_path,
         }
         for s in slices
     ]
@@ -572,14 +555,10 @@ def get_slice_image(
     if not slc:
         raise HTTPException(404, "Slice not found")
 
-    # Access check
     series = db.query(Series).filter(Series.id == slc.series_id).first()
-    if series:
-        study = db.query(Study).filter(Study.id == series.study_id).first()
-        if study:
-            patient = db.query(Patient).filter(Patient.id == study.patient_id).first()
-            if patient:
-                check_patient_access(patient, current_user)
+    if not series:
+        raise HTTPException(404, "Slice not found")
+    require_study(db, current_user, series.study_id, action="view_slice")
 
     full_path = os.path.join(DICOM_DIR, slc.file_path) if slc.file_path else ""
     if not os.path.exists(full_path):
@@ -628,14 +607,10 @@ def get_slice_dicom_raw(
     if not slc:
         raise HTTPException(404, "Slice not found")
 
-    # Access check
     series = db.query(Series).filter(Series.id == slc.series_id).first()
-    if series:
-        study = db.query(Study).filter(Study.id == series.study_id).first()
-        if study:
-            patient = db.query(Patient).filter(Patient.id == study.patient_id).first()
-            if patient:
-                check_patient_access(patient, current_user)
+    if not series:
+        raise HTTPException(404, "Slice not found")
+    require_study(db, current_user, series.study_id, action="view_slice")
 
     full_path = os.path.join(DICOM_DIR, slc.file_path) if slc.file_path else ""
     if not os.path.exists(full_path):
@@ -696,6 +671,4 @@ def delete_patient(
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if not patient:
         raise HTTPException(404, "Patient not found")
-    db.delete(patient)
-    db.commit()
-    return {"status": "ok", "deleted": patient_id}
+    raise HTTPException(403, "Patient deletion requires a reviewed retention workflow")

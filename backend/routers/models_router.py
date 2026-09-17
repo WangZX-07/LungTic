@@ -8,7 +8,7 @@ from database import get_db
 from routers.auth import get_current_user
 from models.db_models import User, UserModel, ModelType, TaskType
 from services.inference import get_engine
-from config import MODEL_DIR
+from config import MODEL_DIR, SERVER_MODE
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -34,6 +34,8 @@ def upload_model(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if SERVER_MODE:
+        raise HTTPException(403, "Custom model uploads are disabled on the shared server")
     if file.filename is None:
         raise HTTPException(400, "No file provided")
 
@@ -91,6 +93,8 @@ def activate_model(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if SERVER_MODE:
+        raise HTTPException(403, "Custom models are disabled on the shared server")
     model = (
         db.query(UserModel)
         .filter(UserModel.id == model_id, UserModel.user_id == current_user.id)

@@ -6,7 +6,7 @@ import io
 import base64
 import uuid
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from database import get_db
@@ -14,6 +14,7 @@ from routers.auth import get_current_user
 from models.db_models import User, Patient, Study, Series, Slice, Segmentation, IgtvResult, Trajectory
 from config import DICOM_DIR, TICI_DIR, TICI_VIEWER_DIR
 from datetime import datetime
+from services.access_control import require_study, patient_for_upload, upload_department, audit
 
 # Add ui/ to path so we can import tici package
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -27,19 +28,7 @@ VIEWER_UPLOAD_CHUNK = 1024 * 1024
 
 
 def _get_study_with_access(study_id: int, db: Session, current_user: User) -> Study:
-    """Get study and verify access."""
-    study = db.query(Study).filter(Study.id == study_id).first()
-    if not study:
-        raise HTTPException(404, "Study not found")
-
-    patient = db.query(Patient).filter(Patient.id == study.patient_id).first()
-    if patient:
-        user_role = current_user.role.value if hasattr(current_user.role, "value") else current_user.role
-        if user_role not in ("doctor", "admin"):
-            if patient.user_id != current_user.id:
-                if not (current_user.patient_code and patient.patient_code == current_user.patient_code):
-                    raise HTTPException(403, "Access denied")
-    return study
+    return require_study(db, current_user, study_id)
 
 
 def _get_tici_path(study_id: int) -> str:
@@ -285,6 +274,8 @@ def close_tici_viewer(
 @router.post("/import")
 def import_tici(
     file: UploadFile = File(...),
+    patient_code_override: str = Form(""),
+    department_id: int | None = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -292,14 +283,22 @@ def import_tici(
     if not file.filename or not file.filename.lower().endswith(".tici"):
         raise HTTPException(400, "Only .tici files are accepted")
 
+    department_id = upload_department(db, current_user, department_id)
     # Save uploaded file temporarily
     os.makedirs(TICI_DIR, exist_ok=True)
     tmp_name = f"_import_{uuid.uuid4().hex}.tici"
     tmp_path = os.path.join(TICI_DIR, tmp_name)
+    reader = None
+    moved_path = None
+    committed = False
     try:
-        content = file.file.read()
-        with open(tmp_path, "wb") as f:
-            f.write(content)
+        size = 0
+        with open(tmp_path, "wb") as target:
+            while chunk := file.file.read(VIEWER_UPLOAD_CHUNK):
+                size += len(chunk)
+                if size > VIEWER_UPLOAD_LIMIT:
+                    raise HTTPException(413, "TICI file exceeds 2 GB")
+                target.write(chunk)
 
         with TiciReader(tmp_path) as reader:
             meta = reader.get_metadata()
@@ -309,17 +308,12 @@ def import_tici(
             raise HTTPException(400, "Empty .tici file (no phases)")
 
         # Create or find patient
-        patient_code = meta.patient.patient_id or f"TICI-{uuid.uuid4().hex[:8]}"
-        patient = db.query(Patient).filter(Patient.patient_code == patient_code).first()
-        if not patient:
-            patient = Patient(
-                patient_code=patient_code,
-                gender=meta.patient.patient_sex[:1] if meta.patient.patient_sex else None,
-                age_range=meta.patient.patient_age or None,
-                user_id=current_user.id,
-            )
-            db.add(patient)
-            db.flush()
+        patient_code = patient_code_override.strip() or meta.patient.patient_id
+        patient = patient_for_upload(
+            db, current_user, patient_code, department_id, meta.patient.patient_sex
+        )
+        if patient.age_range is None:
+            patient.age_range = meta.patient.patient_age or None
 
         # Create study
         study_date = None
@@ -329,9 +323,12 @@ def import_tici(
             except ValueError:
                 pass
 
+        study_uid = meta.study.study_uid or f"tici-{uuid.uuid4().hex}"
+        if db.query(Study).filter(Study.study_uid == study_uid).first():
+            raise HTTPException(409, "Study UID already imported")
         study = Study(
             patient_id=patient.id,
-            study_uid=meta.study.study_uid or f"tici-{uuid.uuid4().hex}",
+            study_uid=study_uid,
             study_date=study_date,
             phase_count=phase_count,
         )
@@ -343,9 +340,10 @@ def import_tici(
         tici_path = os.path.join(TICI_DIR, tici_name)
         if tmp_path != tici_path:
             os.replace(tmp_path, tici_path)
-            tmp_path = tici_path  # prevent double cleanup
+            moved_path = tici_path
 
         study.tici_path = tici_path
+        reader = TiciReader(tici_path).__enter__()
 
         # Extract images from .tici and create DICOM-style slices
         phase_info = reader.get_phase_meta()
@@ -384,8 +382,9 @@ def import_tici(
 
                 # Save as minimal DICOM
                 slice_dcm_name = f"tici_p{phase_idx}_z{z:04d}.dcm"
-                slice_dcm_path = os.path.join(DICOM_DIR, slice_dcm_name)
-                os.makedirs(DICOM_DIR, exist_ok=True)
+                slice_dir = os.path.join(DICOM_DIR, "tici_import", str(study.id))
+                os.makedirs(slice_dir, exist_ok=True)
+                slice_dcm_path = os.path.join(slice_dir, slice_dcm_name)
 
                 try:
                     import pydicom
@@ -408,7 +407,7 @@ def import_tici(
                     ds.save_as(slice_dcm_path, write_like_original=False)
                 except Exception:
                     # Fallback: raw save
-                    slice_dcm_path = os.path.join(DICOM_DIR, f"tici_p{phase_idx}_z{z:04d}.raw")
+                    slice_dcm_path = os.path.join(slice_dir, f"tici_p{phase_idx}_z{z:04d}.raw")
                     slice_img.astype(np.float32).tobytes()
                     with open(slice_dcm_path, "wb") as sf:
                         sf.write(slice_img.astype(np.float32).tobytes())
@@ -476,6 +475,8 @@ def import_tici(
                 ))
 
         db.commit()
+        committed = True
+        audit(db, current_user, "import_tici", "study", study.id, patient.id, True)
 
         return {
             "status": "ok",
@@ -485,20 +486,22 @@ def import_tici(
             "patient_code": patient.patient_code,
             "has_igtv": igtv_data is not None and igtv_data.mask is not None,
             "has_trajectory": traj_data is not None and traj_data.centroids is not None,
-            "tici_path": tici_path,
         }
 
-    except Exception as e:
+    except HTTPException:
         db.rollback()
-        raise HTTPException(500, f"Failed to import .tici file: {str(e)}")
+        raise
+    except Exception:
+        db.rollback()
+        raise HTTPException(400, "Failed to import TICI file")
     finally:
-        if os.path.exists(tmp_path) and tmp_path != _get_tici_path(0):  # cleanup only if temp
-            try:
-                # Check if tmp_path was already moved
-                if os.path.exists(tmp_path) and tmp_path.startswith(TICI_DIR) and "_import_" in tmp_path:
-                    pass  # Already handled by os.replace
-            except Exception:
-                pass
+        if reader is not None:
+            reader.__exit__(None, None, None)
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        if moved_path and not committed and os.path.exists(moved_path):
+            os.remove(moved_path)
+
 
 
 # ---------------------------------------------------------------------------
@@ -512,7 +515,7 @@ def export_tici(
     current_user: User = Depends(get_current_user),
 ):
     """Export all data for a study into a single .tici file."""
-    study = _get_study_with_access(study_id, db, current_user)
+    study = require_study(db, current_user, study_id, write=True, action="export_tici")
     patient = db.query(Patient).filter(Patient.id == study.patient_id).first()
 
     tici_path = _get_tici_path(study_id)
@@ -639,7 +642,6 @@ def export_tici(
     return {
         "status": "ok",
         "study_id": study_id,
-        "tici_path": tici_path,
         "phase_count": study.phase_count,
     }
 

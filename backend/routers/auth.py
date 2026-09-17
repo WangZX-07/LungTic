@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import io
 import csv
 import random
@@ -12,6 +13,7 @@ from services.auth_service import (
 )
 from services.email_service import send_email
 from models.db_models import User, PasswordReset, Patient
+from config import SERVER_MODE
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from PIL import Image, ImageDraw
 
@@ -185,7 +187,9 @@ def captcha_verify(req: CaptchaVerifyRequest):
 
 @router.post("/login", response_model=TokenResponse)
 def login(req: LoginRequest, db: Session = Depends(get_db)):
-    # Verify captcha
+    # Require a fresh captcha on the shared server.
+    if SERVER_MODE and not req.captcha_token:
+        raise HTTPException(status_code=400, detail="验证码必填")
     if req.captcha_token:
         captcha_payload = verify_captcha_token(req.captcha_token)
         if captcha_payload is None:
@@ -255,8 +259,8 @@ def reset_password_confirm(req: ResetPasswordConfirmRequest, db: Session = Depen
     if not user:
         raise HTTPException(status_code=400, detail="验证码无效或已过期")
 
-    if len(req.new_password) < 6:
-        raise HTTPException(status_code=400, detail="密码至少6位")
+    if len(req.new_password) < (12 if SERVER_MODE else 6):
+        raise HTTPException(status_code=400, detail="密码长度不足")
 
     user.password_hash = hash_password(req.new_password)
 
@@ -280,8 +284,8 @@ def change_password(
 ):
     if not verify_password(req.old_password, current_user.password_hash):
         raise HTTPException(status_code=400, detail="旧密码错误")
-    if len(req.new_password) < 6:
-        raise HTTPException(status_code=400, detail="密码至少6位")
+    if len(req.new_password) < (12 if SERVER_MODE else 6):
+        raise HTTPException(status_code=400, detail="密码长度不足")
 
     current_user.password_hash = hash_password(req.new_password)
     db.commit()
@@ -352,6 +356,8 @@ def create_user(
     """Admin creates a single user."""
     if req.role not in ("doctor", "admin", "patient"):
         raise HTTPException(status_code=400, detail="Invalid role")
+    if SERVER_MODE and len(req.password) < 12:
+        raise HTTPException(status_code=400, detail="Password must be at least 12 characters")
     existing = db.query(User).filter(User.username == req.username).first()
     if existing:
         raise HTTPException(status_code=400, detail="Username already exists")
@@ -372,9 +378,12 @@ def create_user(
         code = req.patient_code if req.patient_code else f"P{user.id:04d}"
         existing_pc = db.query(Patient).filter(Patient.patient_code == code).first()
         if existing_pc:
-            raise HTTPException(status_code=400, detail="Patient code already exists")
-        patient = Patient(patient_code=code, user_id=user.id)
-        db.add(patient)
+            if existing_pc.user_id is not None:
+                raise HTTPException(status_code=400, detail="Patient code already has an account")
+            existing_pc.user_id = user.id
+        else:
+            patient = Patient(patient_code=code, user_id=user.id)
+            db.add(patient)
 
     db.commit()
 
@@ -386,7 +395,6 @@ def create_user(
         body_lines.append("\u60a8\u7684 LungTic \u8d26\u53f7\u5df2\u521b\u5efa\u6210\u529f\uff01")
         body_lines.append("")
         body_lines.append("\u7528\u6237\u540d\uff1a" + req.username)
-        body_lines.append("\u5bc6\u7801\uff1a" + req.password)
         body_lines.append("\u89d2\u8272\uff1a" + req.role)
         body_lines.append("")
         body_lines.append("\u8bf7\u767b\u5f55\u540e\u53ca\u65f6\u4fee\u6539\u5bc6\u7801\u3002")
@@ -496,6 +504,9 @@ def batch_create(
         if not username or not password:
             errors.append(f"第{i}行: 用户名或密码为空")
             continue
+        if SERVER_MODE and len(password) < 12:
+            errors.append(f"第{i}行: 密码至少12位")
+            continue
 
         if role not in ("doctor", "admin", "patient"):
             errors.append(f"第{i}行: 无效的角色 {role}")
@@ -505,6 +516,12 @@ def batch_create(
         existing = db.query(User).filter(User.username == username).first()
         if existing:
             errors.append(f"第{i}行: 用户名 {username} 已存在")
+            continue
+
+        code = patient_code if patient_code else None
+        existing_patient = db.query(Patient).filter(Patient.patient_code == code).first() if role == "patient" and code else None
+        if existing_patient and existing_patient.user_id is not None:
+            errors.append(f"第{i}行: 患者编码 {code} 已绑定账号")
             continue
 
         # Create user
@@ -519,27 +536,20 @@ def batch_create(
         db.add(user)
         db.flush()
 
-        # If patient role, create patient record
+        # Bind a reviewed existing record or create a new patient record.
         if role == "patient":
             code = patient_code if patient_code else f"P{user.id:04d}"
-            # Check duplicate patient_code
-            existing_patient = db.query(Patient).filter(Patient.patient_code == code).first()
             if existing_patient:
-                errors.append(f"第{i}行: 患者编码 {code} 已存在")
-                db.rollback()
-                continue
-            patient = Patient(
-                patient_code=code,
-                user_id=user.id,
-            )
-            db.add(patient)
+                existing_patient.user_id = user.id
+            else:
+                db.add(Patient(patient_code=code, user_id=user.id))
 
         created.append({"username": username, "role": role, "email": email})
 
         # Send notification email
         if email:
             subject = "LungTic 账号已创建"
-            body = f"您好 {username}，\n\n您的 LungTic 账号已创建成功！\n\n用户名：{username}\n密码：{password}\n角色：{role}\n\n请登录后及时修改密码。\n\nLungTic Team"
+            body = f"您好 {username}，\n\n您的 LungTic 账号已创建成功！\n\n用户名：{username}\n角色：{role}\n\n请登录后及时修改密码。\n\nLungTic Team"
             send_email(email, subject, body)
 
     db.commit()

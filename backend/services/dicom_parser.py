@@ -2,6 +2,7 @@
 
 import os
 import uuid
+import hashlib
 import pydicom
 from typing import Optional
 from config import DICOM_DIR
@@ -30,12 +31,17 @@ def parse_dicom(file_path: str) -> dict:
     }
 
 
+def study_storage_dir(study_uid: str) -> str:
+    """Keep untrusted DICOM UIDs out of filesystem paths."""
+    return hashlib.sha256(str(study_uid).encode("utf-8")).hexdigest()
+
+
 def store_dicom(file_content: bytes, filename: str, study_uid: str) -> str:
     """Store DICOM file and return relative path."""
-    study_dir = os.path.join(DICOM_DIR, study_uid)
+    study_dir = os.path.join(DICOM_DIR, study_storage_dir(study_uid))
     os.makedirs(study_dir, exist_ok=True)
 
-    safe_name = f"{uuid.uuid4().hex}.dcm"
+    safe_name = f"{uuid.uuid4().hex}{'.raw' if filename.lower().endswith('.raw') else '.dcm'}"
     file_path = os.path.join(study_dir, safe_name)
     with open(file_path, "wb") as f:
         f.write(file_content)
@@ -61,7 +67,9 @@ def parse_nifti(file_path: str) -> list[dict]:
     import numpy as np
 
     img = nib.load(file_path)
-    data = img.get_fdata()
+    if int(np.prod(img.shape)) > 64_000_000:
+        raise ValueError("NIfTI volume exceeds voxel limit")
+    data = img.get_fdata(dtype=np.float32)
     header = img.header
 
     # Extract dimensions
@@ -102,7 +110,7 @@ def parse_nifti(file_path: str) -> list[dict]:
 def store_nifti(file_content: bytes, filename: str, study_uid: str) -> str:
     """Store NIfTI file and return relative path."""
     import uuid
-    study_dir = os.path.join(DICOM_DIR, study_uid)
+    study_dir = os.path.join(DICOM_DIR, study_storage_dir(study_uid))
     os.makedirs(study_dir, exist_ok=True)
     safe_name = f"{uuid.uuid4().hex}.nii.gz"
     file_path = os.path.join(study_dir, safe_name)

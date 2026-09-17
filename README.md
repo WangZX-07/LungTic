@@ -1,28 +1,20 @@
 # LungTic — 基于 U-Net 的 4D 肺癌诊断与预测
 
-## 快速启动
+## 中心病例服务
 
-### 1. 数据库
+私有分支 `feat/clinical-records-server` 增加病例附件上传、科室与诊疗团队权限、限时会诊授权和访问审计。数据库迁移、密钥配置、管理员初始化及验证步骤见 [中心病例服务运行说明](docs/CLINICAL_SERVER.md)。中心服务启动时必须显式配置数据库 URL、JWT/验证码密钥及前端来源。
 
-```bash
-mysql -u root -p < database/schema.sql
-```
-
-### 2. 后端
-
-```bash
+```powershell
 cd backend
 pip install -r requirements.txt
-python main.py
+python bootstrap_admin.py
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-### 3. 前端
-
-```bash
+```powershell
 cd frontend
 npm install
-npm run dev          # 浏览器开发
-npm run electron:dev # Electron 桌面开发
+npm run dev
 ```
 
 ## TICI 查看器

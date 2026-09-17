@@ -5,11 +5,12 @@
       <n-space justify="space-between" align="center" style="margin-bottom:24px">
         <h2 style="font-size:20px">患者列表</h2>
         <n-space>
-          <n-input v-model:value="overridePatientId" placeholder="手动输入患者ID" style="width:180px" size="small" clearable />
-          <n-upload multiple accept=".dcm,.nii,.nii.gz,.tici" :show-file-list="true" :custom-request="handleFileUpload">
+          <n-input v-if="auth.isDoctor && !auth.isAdmin" v-model:value="overridePatientId" placeholder="患者编码" style="width:180px" size="small" clearable />
+          <n-button v-if="auth.isDoctor && !auth.isAdmin" size="small" @click="createPatient">创建病例</n-button>
+          <n-upload v-if="auth.isDoctor && !auth.isAdmin" multiple accept=".dcm,.nii,.nii.gz,.tici" :show-file-list="true" :custom-request="handleFileUpload">
             <n-button type="primary"><template #icon><n-icon><CloudUploadOutline /></n-icon></template>上传 DICOM / NIfTI / TICI</n-button>
           </n-upload>
-          <n-upload multiple accept=".dcm" directory-dnd :show-file-list="true" :custom-request="handleFolderUpload">
+          <n-upload v-if="auth.isDoctor && !auth.isAdmin" multiple accept=".dcm" directory-dnd :show-file-list="true" :custom-request="handleFolderUpload">
             <n-button type="info"><template #icon><n-icon><FolderOpenOutline /></n-icon></template>上传 DICOM 文件夹</n-button>
           </n-upload>
         </n-space>
@@ -18,7 +19,7 @@
         <div v-if="patients.length === 0 && !loading" class="empty">
           <n-icon size="48" color="#CBD5E1"><FolderOpenOutline /></n-icon>
           <p>暂无患者数据</p>
-          <p class="hint">请上传 DICOM / NIfTI / .tiCi 文件以开始分析</p>
+          <p class="hint">{{ auth.isAdmin ? "管理员管理科室与成员后，由医师上传病例。" : "创建病例或上传 DICOM / NIfTI / TICI 文件以开始分析。" }}</p>
         </div>
         <n-data-table v-else :columns="doctorColumns" :data="patients" :row-key="(row: any) => row.id" :row-props="getRowProps" :bordered="false" :single-line="false" striped class="patients-table" />
       </n-spin>
@@ -40,7 +41,7 @@
                     <span>Study {{ (s.study_uid || "").substring(0, 16) }}...</span>
                     <n-space :size="4">
                       <n-tag size="tiny" :bordered="false" type="info">{{ s.phase_count || 0 }} 时相</n-tag>
-                      <n-tag v-if="s.tici_path" size="tiny" :bordered="false" type="success">TICI OK</n-tag>
+                      <n-tag v-if="s.has_tici" size="tiny" :bordered="false" type="success">TICI OK</n-tag>
                     </n-space>
                   </n-space>
                 </template>
@@ -52,7 +53,7 @@
                 <template #action>
                   <n-space :size="4">
                     <n-button size="tiny" @click.stop="openStudy(s.id)">浏览</n-button>
-                    <n-button size="tiny" type="info" @click.stop="downloadTici(s.id)" :disabled="!s.tici_path">下载 TICI</n-button>
+                    <n-button size="tiny" type="info" @click.stop="downloadTici(s.id)" :disabled="!s.has_tici">下载 TICI</n-button>
                     <n-button size="tiny" @click.stop="viewTiciInfo(s.id)">TICI 信息</n-button>
                   </n-space>
                 </template>
@@ -60,6 +61,7 @@
             </n-list-item>
           </n-list>
           <n-empty v-else description="暂无检查记录" style="margin-top:24px" />
+          <ClinicalRecords :patient-id="selectedPatient.id" />
         </n-drawer-content>
       </n-drawer>
     </template>
@@ -68,11 +70,7 @@
     <template v-else>
       <n-space justify="space-between" align="center" style="margin-bottom:24px">
         <h2 style="font-size:20px">我的检查</h2>
-        <n-space>
-          <n-upload multiple accept=".dcm,.nii,.nii.gz,.tici" :show-file-list="true" :custom-request="handleFileUpload">
-            <n-button type="primary"><template #icon><n-icon><CloudUploadOutline /></n-icon></template>上传 DICOM / TICI</n-button>
-          </n-upload>
-        </n-space>
+
       </n-space>
       <n-card size="small" style="margin-bottom:16px">
         <n-space align="center" :size="24">
@@ -93,7 +91,7 @@
               <template #header>
                 <n-space justify="space-between">
                   <span>Study {{ (s.study_uid || "").substring(0, 16) }}...</span>
-                  <n-tag v-if="s.tici_path" size="tiny" :bordered="false" type="success">TICI</n-tag>
+                  <n-tag v-if="s.has_tici" size="tiny" :bordered="false" type="success">TICI</n-tag>
                 </n-space>
               </template>
               <template #description><n-space :size="8"><span>{{ s.study_date || "日期未知" }}</span><n-tag size="tiny" :bordered="false" type="info">{{ s.phase_count || 0 }} 时相</n-tag></n-space></template>
@@ -102,6 +100,7 @@
         </n-list>
         <n-empty v-else description="暂无检查记录" />
       </n-spin>
+      <ClinicalRecords v-if="patientInfo" :patient-id="patientInfo.id" />
     </template>
   </div>
 </template>
@@ -110,7 +109,8 @@
 import { ref, h, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { NSpace, NButton, NIcon, NUpload, NSpin, NDataTable, NDrawer, NDrawerContent, NList, NListItem, NThing, NEmpty, NTag, NCard, NInput, useMessage } from "naive-ui";
-import { CloudUploadOutline, FolderOpenOutline, DownloadOutline } from "@vicons/ionicons5";
+import { CloudUploadOutline, FolderOpenOutline } from "@vicons/ionicons5";
+import ClinicalRecords from "@/components/ClinicalRecords.vue";
 import type { DataTableColumns } from "naive-ui";
 import api from "@/api";
 import { useAuthStore } from "@/stores/auth";
@@ -144,6 +144,19 @@ function getRowProps(row: any) { return { style: "cursor: pointer", onClick: () 
 async function fetchPatients() {
   loading.value = true;
   try { const res = await api.get("/dicom/patients"); patients.value = res.data; } finally { loading.value = false; }
+}
+
+async function createPatient() {
+  const code = overridePatientId.value.trim();
+  if (!code) { message.warning("请输入患者编码"); return; }
+  try {
+    await api.post("/patients", { patient_code: code });
+    message.success("病例已创建");
+    await fetchPatients();
+    overridePatientId.value = "";
+  } catch {
+    message.error("创建失败：请检查编码是否已存在及科室分配");
+  }
 }
 
 async function openPatient(patient: any) {
@@ -199,6 +212,7 @@ async function handleFileUpload({ file, onFinish, onError }: any) {
   if (isTici) {
     // TICI import
     formData.append("file", rawFile);
+    if (overridePatientId.value) formData.append("patient_code_override", overridePatientId.value);
     try {
       const res = await api.post("/tici/import", formData);
       message.success(`TICI 导入成功: Study #${res.data.study_id} (${res.data.phase_count} 时相)`);

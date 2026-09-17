@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from database import get_db
 from routers.auth import get_current_user
+from services.access_control import require_study
 from models.db_models import User, Study, Series, Slice, Segmentation, IgtvResult
 from models.igtv_reconstruct import (
     fuse_phase_masks, marching_cubes_mesh,
@@ -34,9 +35,7 @@ def reconstruct_igtv(
     current_user: User = Depends(get_current_user),
 ):
     """Reconstruct IGTV from all phase segmentation masks."""
-    study = db.query(Study).filter(Study.id == req.study_id).first()
-    if not study:
-        raise HTTPException(404, "Study not found")
+    study = require_study(db, current_user, req.study_id, write=True, action="run_ai")
 
     # Get all segmentation masks grouped by phase
     series_list = (
@@ -148,6 +147,7 @@ def get_igtv(
     current_user: User = Depends(get_current_user),
 ):
     """Get IGTV result for a study."""
+    require_study(db, current_user, study_id, action="view_ai_result")
     igtv = db.query(IgtvResult).filter(IgtvResult.study_id == study_id).first()
     if not igtv:
         return {"study_id": study_id, "status": "not_run"}

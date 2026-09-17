@@ -8,11 +8,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from database import get_db
 from routers.auth import get_current_user
+from services.access_control import require_study
 from models.db_models import User, Study, Series, Slice, Segmentation, UserModel
 from services.inference import get_engine
 from datetime import datetime
 from sqlalchemy import func
-from config import DICOM_DIR, TICI_DIR
+from config import DICOM_DIR, TICI_DIR, SERVER_MODE
 
 router = APIRouter(prefix="/api/segmentation", tags=["segmentation"])
 
@@ -35,13 +36,13 @@ def run_segmentation(
     current_user: User = Depends(get_current_user),
 ):
     """Run Attention U-Net segmentation on a study."""
-    study = db.query(Study).filter(Study.id == req.study_id).first()
-    if not study:
-        raise HTTPException(404, "Study not found")
+    study = require_study(db, current_user, req.study_id, write=True, action="run_ai")
 
     engine = get_engine()
     model_version = "builtin-v0.1"
 
+    if req.model_id and SERVER_MODE:
+        raise HTTPException(403, "Custom models are disabled on the shared server")
     if req.model_id:
         model = (
             db.query(UserModel)
@@ -148,9 +149,7 @@ def get_segmentation_result(
     current_user: User = Depends(get_current_user),
 ):
     """Get segmentation results for a study."""
-    study = db.query(Study).filter(Study.id == study_id).first()
-    if not study:
-        raise HTTPException(404, "Study not found")
+    require_study(db, current_user, study_id, action="view_ai_result")
 
     segs = (
         db.query(Segmentation, Slice)

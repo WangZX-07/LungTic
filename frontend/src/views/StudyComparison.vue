@@ -114,7 +114,7 @@
             Study #{{ s.id }}
           </n-button>
           <span class="picker-date">{{ s.study_date || "-" }}</span>
-          <n-tag v-if="s.tici_path" size="tiny" :bordered="false" type="success">TICI</n-tag>
+          <n-tag v-if="s.has_tici" size="tiny" :bordered="false" type="success">TICI</n-tag>
         </div>
       </n-space>
     </div>
