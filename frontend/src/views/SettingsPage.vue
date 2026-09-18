@@ -25,6 +25,32 @@
         </n-space>
       </n-card>
 
+      <!-- 医院连接 -->
+      <n-card v-if="isPackagedClinicalClient" title="医院连接" size="small">
+        <n-space vertical :size="12">
+          <div>
+            <div class="setting-label">当前服务端</div>
+            <div class="connection-value">{{ currentOrigin || "未配置" }}</div>
+          </div>
+          <div>
+            <div class="setting-label">服务器公钥 SHA-256 指纹</div>
+            <code class="connection-pin">{{ currentPin || "未配置" }}</code>
+          </div>
+          <n-button v-if="!editingConnection" size="small" @click="startConnectionEdit">重新配置连接</n-button>
+          <div v-else class="connection-editor">
+            <label for="settings-server-origin" class="setting-label">医院服务端 HTTPS 地址</label>
+            <n-input id="settings-server-origin" v-model:value="serverOrigin" placeholder="https://clinical.example.org" :disabled="savingConnection" />
+            <label for="settings-server-pin" class="setting-label">服务器公钥 SHA-256 指纹</label>
+            <n-input id="settings-server-pin" v-model:value="serverPin" placeholder="64 位十六进制指纹" :disabled="savingConnection" />
+            <p class="setting-desc">保存后将退出当前账号，并重新加载客户端以使用新连接。</p>
+            <n-space>
+              <n-button type="primary" size="small" :disabled="!serverOrigin.trim() || !serverPin.trim()" :loading="savingConnection" @click="saveConnection">保存并重新连接</n-button>
+              <n-button size="small" :disabled="savingConnection" @click="editingConnection = false">取消</n-button>
+            </n-space>
+          </div>
+          <p v-if="connectionError" class="connection-error" role="alert">{{ connectionError }}</p>
+        </n-space>
+      </n-card>
       <!-- 外观 -->
       <n-card title="外观" size="small">
         <n-space vertical :size="12">
@@ -126,12 +152,15 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import { useThemeStore } from "@/stores/theme";
 import { useAuthStore } from "@/stores/auth";
 import api from "@/api";
+import { getServerConnection, isPackagedClinicalClient, saveServerConnection } from "@/api/server";
 import { NSpace, NCard, NSwitch, NTag, NDivider, NInputNumber, NInput, NSelect, NSlider, NButton, useMessage } from "naive-ui";
 
 const message = useMessage();
+const router = useRouter();
 const themeStore = useThemeStore();
 const authStore = useAuthStore();
 
@@ -146,6 +175,45 @@ const profileSaving = ref(false);
 const profileMsg = ref("");
 const profileOk = ref(false);
 
+const currentOrigin = ref("");
+const currentPin = ref("");
+const serverOrigin = ref("");
+const serverPin = ref("");
+const editingConnection = ref(false);
+const savingConnection = ref(false);
+const connectionError = ref("");
+
+async function loadConnectionSettings() {
+  if (!isPackagedClinicalClient) return;
+  try {
+    const connection = await getServerConnection();
+    currentOrigin.value = connection?.origin || "";
+    currentPin.value = connection?.pin || "";
+  } catch (e: any) {
+    connectionError.value = e.message || "读取医院连接配置失败";
+  }
+}
+
+function startConnectionEdit() {
+  serverOrigin.value = currentOrigin.value;
+  serverPin.value = currentPin.value;
+  connectionError.value = "";
+  editingConnection.value = true;
+}
+
+async function saveConnection() {
+  savingConnection.value = true;
+  connectionError.value = "";
+  try {
+    await saveServerConnection(serverOrigin.value, serverPin.value);
+    authStore.logout();
+    await router.replace("/login");
+  } catch (e: any) {
+    connectionError.value = e.message || "保存连接配置失败";
+  } finally {
+    savingConnection.value = false;
+  }
+}
 const presetOptions = [
   { label: "肺窗 (1500/-600)", value: "lung" },
   { label: "纵隔窗 (350/50)", value: "mediastinum" },
@@ -170,6 +238,7 @@ async function saveProfile() {
 function clearCache() { localStorage.removeItem("lungtic_settings"); message.success("缓存已清除"); }
 
 onMounted(async () => {
+  await loadConnectionSettings();
   if (authStore.user) { profileEmail.value = authStore.user.email || ""; }
   else {
     await authStore.fetchMe();
@@ -188,4 +257,10 @@ onMounted(async () => {
 .about-row { display: flex; align-items: center; gap: 12px; font-size: 13px; }
 .about-label { color: #64748B; width: 64px; flex-shrink: 0; }
 .text-muted { font-size: 12px; color: #94A3B8; }
+.connection-value { margin-top: 4px; font-size: 13px; color: #334155; overflow-wrap: anywhere; }
+.connection-pin { display: block; margin-top: 4px; color: #334155; font-size: 12px; overflow-wrap: anywhere; }
+.connection-editor { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
+.connection-editor .setting-desc { color: #52647b; line-height: 1.5; }
+.connection-editor :deep(input) { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.connection-error { color: #b42331; font-size: 13px; margin: 0; }
 </style>

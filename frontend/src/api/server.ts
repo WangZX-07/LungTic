@@ -28,8 +28,9 @@ export async function saveServerConnection(origin: string, pin: string): Promise
   if (!isPackagedClinicalClient || !window.lungticConnection) {
     throw new Error("仅安装版客户端可保存医院连接");
   }
+  const connection = await window.lungticConnection.save({ origin, pin });
   setClientToken("");
-  return window.lungticConnection.save({ origin, pin });
+  return connection;
 }
 
 export async function clientApiBaseUrl(): Promise<string> {

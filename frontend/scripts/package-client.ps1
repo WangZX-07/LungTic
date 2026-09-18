@@ -9,7 +9,11 @@ try {
     npm run build
     if ($LASTEXITCODE -ne 0) { throw "Frontend build failed" }
 
-    & ".\node_modules\.bin\electron-builder.cmd" --config electron-builder.client.json "--config.directories.output=$staging" --win nsis
+    $electronDist = Join-Path $frontendRoot "node_modules\electron\dist"
+    if (-not (Test-Path -LiteralPath (Join-Path $electronDist "electron.exe"))) {
+        throw "Local Electron runtime is missing; run npm install first"
+    }
+    & ".\node_modules\.bin\electron-builder.cmd" --config electron-builder.client.json "--config.directories.output=$staging" "--config.electronDist=$electronDist" --win nsis
     if ($LASTEXITCODE -ne 0) { throw "Electron packaging failed" }
 
     $installer = Get-ChildItem -LiteralPath $staging -Filter "LungTic-Clinical-*-Setup.exe" -File |

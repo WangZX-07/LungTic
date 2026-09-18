@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from "vue-router";
+import { getClientToken, setClientToken } from "@/api/server";
 
 type UserRole = "patient" | "doctor" | "viewer_admin";
 const standaloneViewer = import.meta.env.VITE_STANDALONE_VIEWER === "true";
@@ -10,7 +11,7 @@ const roleRoutes: Record<UserRole, string[]> = {
 };
 
 function getUserRole(): UserRole | null {
-  const token = localStorage.getItem("lungtic_token");
+  const token = getClientToken();
   if (!token) return null;
   try {
     const encoded = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
@@ -74,9 +75,9 @@ const router = createRouter({
 });
 
 router.beforeEach((to, _from, next) => {
-  const token = localStorage.getItem("lungtic_token");
+  const token = getClientToken();
   if (token && !getUserRole()) {
-    localStorage.removeItem("lungtic_token");
+    setClientToken("");
     next({ name: "Login" });
     return;
   }
