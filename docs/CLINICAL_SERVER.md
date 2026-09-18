@@ -23,7 +23,7 @@ python bootstrap_admin.py
 python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-`bootstrap_admin.py` 可重复运行，会更新指定管理员密码。服务入口 `main.py` 缺少数据库 URL、私有数据目录、JWT/验证码密钥、附件加密密钥或明确 CORS 来源时会拒绝启动。附件加密密钥须由安全的密钥管理系统保存并注入进程；丢失密钥后附件无法恢复。默认监听本机；跨机器访问需由部署方配置内网 HTTPS 反向代理、访问控制与文件权限。服务默认将 `OPENBLAS_NUM_THREADS` 设为 1，避免空闲数值库预留大量线程内存；如机构经压测需要更多 BLAS 并行度，可在启动前显式设置该环境变量。PyTorch 模型在首次推理时加载，首次运行会增加内存和启动时延。开发时在 `frontend` 下运行 `npm run dev` 启动临床客户端，运行 `npm run dev:admin` 启动管理后台；两个开发代理均指向本机 8000 端口。生产环境须将管理后台实际 HTTPS 域名加入 CORS 来源；开发调试另加 `http://127.0.0.1:5173` 和 `http://127.0.0.1:5174`。接口文档位于 `/docs`。
+`bootstrap_admin.py` 可重复运行，会更新指定管理员密码。示例 URL 中的 `USER` 和 `PASSWORD` 必须替换为真实的 MySQL 账号与密码；错误 `1045 Access denied for user 'USER'` 表示仍在使用占位值。服务入口 `main.py` 缺少数据库 URL、私有数据目录、JWT/验证码密钥、附件加密密钥或明确 CORS 来源时会拒绝启动。附件加密密钥须由安全的密钥管理系统保存并注入进程；丢失密钥后附件无法恢复。默认监听本机；跨机器访问需由部署方配置内网 HTTPS 反向代理、访问控制与文件权限。服务默认将 `OPENBLAS_NUM_THREADS` 设为 1，避免空闲数值库预留大量线程内存；如机构经压测需要更多 BLAS 并行度，可在启动前显式设置该环境变量。PyTorch 模型在首次推理时加载，首次运行会增加内存和启动时延。开发时在 `frontend` 下运行 `npm run dev` 启动临床客户端，运行 `npm run dev:admin` 启动管理后台；两个开发代理均指向本机 8000 端口。生产环境须将管理后台实际 HTTPS 域名加入 CORS 来源；开发调试另加 `http://127.0.0.1:5173` 和 `http://127.0.0.1:5174`。接口文档位于 `/docs`。
 
 ## 2. 设置科室与诊疗关系
 
@@ -88,3 +88,11 @@ npm run build:admin
 本分支已做患者/检查/切片/TICI/AI 结果的对象级权限检查、附件认证加密与哈希校验、受控上传下载、科室与会诊授权、基础审计及前端入口。下一阶段仍需：异步与可续传的大文件处理、文件版本和更正流程、请求关联 ID、备份恢复演练、登录与上传限流、恶意文件扫描、前端令牌存储改造、机构身份集成及生产环境安全审查。当前实现不应直接用于真实患者数据的公开互联网部署。
 
 加密设计依据：[cryptography 的 GCM 接口文档](https://cryptography.io/en/stable/hazmat/primitives/symmetric-encryption/)说明认证标签须在完整解密后验证；[NIST SP 800-38D](https://csrc.nist.gov/pubs/sp/800/38/d/final)规定 GCM 的认证加密用途。SHA-256 用于校验和去重，保密性与防篡改由 AES-GCM 和受保护的密钥提供。
+
+## 6. Windows 独立服务包（目标机器无需安装 Python）
+
+在已装好构建依赖的开发机运行 `powershell -ExecutionPolicy Bypass -File backend/scripts/package-server.ps1 -BuildPython "D:\envs\lungtic-training\python.exe"`，得到忽略于 Git 的 `backend-dist/LungTic-Server` 目录。复制整个目录到服务机器；里面有 `LungTic-Server.exe`、Python 运行时、依赖、数据库 SQL 和中文说明。使用目录模式可以避免每次启动都解压数 GB 文件。构建时需要 Python 与 PyInstaller，运行时不需要。AI 模型权重、病例、数据库、TLS 私钥和服务密钥均不在包内。
+
+在服务机器将 `server.env.example.ps1` 复制为仅服务账号可读的 `server.env.ps1`，填写真实数据库、数据目录和独立密钥，然后运行 `powershell -ExecutionPolicy Bypass -File start-server.ps1`。启动脚本默认监听 `127.0.0.1:8000`，只允许本机 HTTPS 反向代理接入；客户端安装版仍须配置有效证书和服务器公钥指纹。修改端口可传 `-Port 18080`。演示数据可以使用 SQLite，但需先创建表和管理员；生产应按本文件第 1 节准备数据库。服务目录可以更换，私有数据目录和配置文件应与可执行程序分开备份与保护。
+
+本机已建立一个与 MySQL 隔离的合成数据演示配置 `backend/.env.demo.ps1`（被 Git 忽略）。可在项目根目录先执行 `. .\backend\.env.demo.ps1`，再运行 `& .\backend-dist\LungTic-Server\LungTic-Server.exe --host 127.0.0.1 --port 8000`。这一运行路径无需再安装 Python，也不会使用之前报错的 MySQL `USER` 占位账号。该 HTTP 演示服务仅供本机开发代理访问；安装版桌面客户端需要机构 HTTPS 服务和可信证书。

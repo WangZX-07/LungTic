@@ -11,6 +11,8 @@
   "files": [
     "dist/**/*",
     "electron/client-main.js",
+    "electron/client-preload.js",
+    "electron/connection.js",
     "package.json"
   ],
   "win": {

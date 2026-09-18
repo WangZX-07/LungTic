@@ -1,4 +1,6 @@
-const { app, BrowserWindow, net, protocol, session } = require("electron");
+const { app, BrowserWindow, ipcMain, net, protocol, safeStorage, session } = require("electron");
+const fs = require("node:fs");
+const { normalizeConnection, isTrustedServer } = require("./connection");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
@@ -9,6 +11,38 @@ protocol.registerSchemesAsPrivileged([{
 
 const appOrigin = "app://lungtic";
 let mainWindow;
+let connection = null;
+
+function connectionFile() {
+  return path.join(app.getPath("userData"), "connection.bin");
+}
+
+function loadConnection() {
+  const file = connectionFile();
+  if (!fs.existsSync(file)) return null;
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("系统安全存储不可用");
+  try {
+    return normalizeConnection(JSON.parse(safeStorage.decryptString(fs.readFileSync(file))));
+  } catch {
+    throw new Error("医院连接配置无法解密，请重新配置客户端");
+  }
+}
+
+function saveConnection(value) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("系统安全存储不可用");
+  const normalized = normalizeConnection(value);
+  const encrypted = safeStorage.encryptString(JSON.stringify(normalized));
+  fs.mkdirSync(path.dirname(connectionFile()), { recursive: true });
+  fs.writeFileSync(connectionFile(), encrypted, { mode: 0o600 });
+  connection = normalized;
+  return normalized;
+}
+
+function requireClientFrame(event) {
+  if (!app.isPackaged || !event.senderFrame?.url?.startsWith(appOrigin + "/")) {
+    throw new Error("Invalid client origin");
+  }
+}
 
 function registerAssets() {
   const root = path.resolve(__dirname, "../dist");
@@ -32,7 +66,7 @@ function registerAssets() {
       ...details.responseHeaders,
       "Content-Security-Policy": [
         "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; " +
-        "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: http://localhost:* http://127.0.0.1:* wss:; " +
+        "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' " + (connection?.origin || "") + "; " +
         "worker-src 'self' blob:; object-src 'none'; frame-src 'none'; base-uri 'self'",
       ],
     } });
@@ -44,7 +78,10 @@ function createWindow() {
     width: 1400, height: 900, minWidth: 960, minHeight: 680,
     title: "LungTic 临床客户端",
     autoHideMenuBar: true,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    webPreferences: {
+      preload: app.isPackaged ? path.join(__dirname, "client-preload.js") : undefined,
+      contextIsolation: true, nodeIntegration: false, sandbox: true,
+    },
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   mainWindow.webContents.on("will-navigate", (event, url) => {
@@ -66,7 +103,27 @@ else {
   });
   app.whenReady().then(() => {
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-    if (app.isPackaged) registerAssets();
+    if (app.isPackaged) {
+      try { connection = loadConnection(); }
+      catch { connection = null; }
+      session.defaultSession.setCertificateVerifyProc((request, callback) => {
+        callback(isTrustedServer(request, connection) ? 0 : -2);
+      });
+      ipcMain.handle("connection:load", (event) => {
+        requireClientFrame(event);
+        return connection;
+      });
+      ipcMain.handle("connection:save", async (event, value) => {
+        requireClientFrame(event);
+        const saved = saveConnection(value);
+        await session.defaultSession.closeAllConnections();
+        setTimeout(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.reload();
+        }, 50);
+        return saved;
+      });
+      registerAssets();
+    }
     createWindow();
   });
 }

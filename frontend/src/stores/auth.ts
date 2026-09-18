@@ -1,10 +1,11 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import api from "@/api";
+import { getClientToken, setClientToken } from "@/api/server";
 
 export const useAuthStore = defineStore("auth", () => {
   const user = ref<{ username: string; role: string; patient_code?: string; email?: string; phone?: string } | null>(null);
-  const token = ref(localStorage.getItem("lungtic_token") || "");
+  const token = ref(getClientToken());
 
   const isAdmin = computed(() => user.value?.role === "admin");
   const isDoctor = computed(() => user.value?.role === "doctor" || user.value?.role === "admin");
@@ -23,7 +24,7 @@ export const useAuthStore = defineStore("auth", () => {
     }
     token.value = res.data.access_token;
     user.value = { username: res.data.username, role: res.data.role };
-    localStorage.setItem("lungtic_token", token.value);
+    setClientToken(token.value);
     return res.data;
   }
 
@@ -44,7 +45,7 @@ export const useAuthStore = defineStore("auth", () => {
   function logout() {
     token.value = "";
     user.value = null;
-    localStorage.removeItem("lungtic_token");
+    setClientToken("");
   }
 
   return { user, token, isAdmin, isDoctor, isPatient, login, fetchMe, logout };

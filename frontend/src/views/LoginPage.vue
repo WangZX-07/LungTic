@@ -6,10 +6,13 @@
       <p class="subtitle">4D 肺癌诊断与预测系统</p>
 
       <div v-if="isPackagedClinicalClient" class="server-config">
-        <label for="server-origin">医院服务端地址</label>
+        <label for="server-origin">医院服务端 HTTPS 地址</label>
         <n-input id="server-origin" v-model:value="serverOrigin" placeholder="https://clinical.example.org" @update:value="serverReady = false" />
-        <n-button size="small" :disabled="!serverOrigin" @click="saveServer">连接服务端</n-button>
-        <span v-if="serverReady" class="server-ok">已配置</span>
+        <label for="server-pin">服务器公钥 SHA-256 指纹</label>
+        <n-input id="server-pin" v-model:value="serverPin" placeholder="由医院管理员通过可信渠道提供的 64 位指纹" @update:value="serverReady = false" />
+        <n-button size="small" :disabled="!serverOrigin || !serverPin" :loading="savingServer" @click="saveServer">保存连接配置</n-button>
+        <span v-if="serverReady" class="server-ok">连接已配置</span>
+        <p class="server-hint">客户端只连接公钥指纹匹配且证书有效的 HTTPS 服务端。</p>
       </div>
 
       <n-form ref="formRef" :model="form" :rules="rules" size="large">
@@ -51,12 +54,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { NForm, NFormItem, NInput, NButton, NIcon, NSelect } from "naive-ui";
 import { PersonOutline, LockClosedOutline } from "@vicons/ionicons5";
 import { useAuthStore } from "@/stores/auth";
-import { getServerOrigin, isPackagedClinicalClient, saveServerOrigin } from "@/api/server";
+import { getServerConnection, isPackagedClinicalClient, saveServerConnection } from "@/api/server";
 import TextCaptcha from "@/components/TextCaptcha.vue";
 import ResetPasswordModal from "@/components/ResetPasswordModal.vue";
 
@@ -71,16 +74,38 @@ const captchaToken = ref("");
 const captchaCode = ref("");
 const showResetModal = ref(false);
 const pwdRef = ref<any>(null);
-const serverOrigin = ref(getServerOrigin());
-const serverReady = ref(!isPackagedClinicalClient || !!serverOrigin.value);
+const serverOrigin = ref("");
+const serverPin = ref("");
+const savingServer = ref(false);
+const serverReady = ref(!isPackagedClinicalClient);
 
-function saveServer() {
+onMounted(async () => {
+  if (!isPackagedClinicalClient) return;
   try {
-    serverOrigin.value = saveServerOrigin(serverOrigin.value);
+    const connection = await getServerConnection();
+    if (connection) {
+      serverOrigin.value = connection.origin;
+      serverPin.value = connection.pin;
+      serverReady.value = true;
+    }
+  } catch (e: any) {
+    error.value = e.message;
+  }
+});
+
+async function saveServer() {
+  savingServer.value = true;
+  serverReady.value = false;
+  try {
+    const connection = await saveServerConnection(serverOrigin.value, serverPin.value);
+    serverOrigin.value = connection.origin;
+    serverPin.value = connection.pin;
     serverReady.value = true;
     error.value = "";
   } catch (e: any) {
     error.value = e.message;
+  } finally {
+    savingServer.value = false;
   }
 }
 
@@ -150,5 +175,6 @@ async function handleLogin() {
 .server-config label { width: 100%; color: #334155; font-size: 13px; font-weight: 600; }
 .server-config :deep(.n-input) { flex: 1; min-width: 230px; }
 .server-ok { color: #15803d; font-size: 12px; }
+.server-hint { margin: 0; color: #64748b; font-size: 12px; line-height: 1.5; }
 @media (max-width: 480px) { .login-card { width: calc(100vw - 32px); padding: 28px 24px; } }
 </style>
