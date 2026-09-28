@@ -24,6 +24,7 @@ test("requires system trust, matching host, and matching public key", () => {
     verificationResult: "OK", errorCode: 0 };
   const connection = { origin: "https://clinical.example.org", pin };
   assert.equal(isTrustedServer(request, connection), true);
+  assert.equal(isTrustedServer({ ...request, verificationResult: "net::OK" }, connection), true);
   assert.equal(isTrustedServer({ ...request, hostname: "other.example.org" }, connection), false);
   assert.equal(isTrustedServer({ ...request, verificationResult: "CERT_AUTHORITY_INVALID" }, connection), false);
   assert.equal(isTrustedServer(request, { ...connection, pin: "0".repeat(64) }), false);

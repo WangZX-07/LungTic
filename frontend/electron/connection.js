@@ -25,7 +25,9 @@ function publicKeyPin(pem) {
 }
 
 function isTrustedServer(request, connection) {
-  if (!connection || request.verificationResult !== "OK" || request.errorCode !== 0) return false;
+  const verificationSucceeded = request.verificationResult === "OK"
+    || request.verificationResult === "net::OK";
+  if (!connection || !verificationSucceeded || request.errorCode !== 0) return false;
   if (request.hostname.toLowerCase() !== new URL(connection.origin).hostname) return false;
   try {
     const actual = Buffer.from(publicKeyPin(request.certificate.data), "hex");
