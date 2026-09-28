@@ -13,7 +13,12 @@
           <n-button text @click="logout">退出登录</n-button>
         </n-space>
       </n-layout-header>
-      <n-layout-content class="content"><router-view /></n-layout-content>
+      <n-layout-content class="content">
+        <div class="content-stack">
+          <main class="content-body"><router-view /></main>
+          <IcpFooter />
+        </div>
+      </n-layout-content>
     </n-layout>
   </n-layout>
 </template>
@@ -23,6 +28,7 @@ import { useRoute, useRouter } from "vue-router";
 import { NLayout, NLayoutSider, NLayoutHeader, NLayoutContent, NMenu, NIcon, NButton, NSpace, NTag } from "naive-ui";
 import { PeopleOutline, BusinessOutline, ShieldCheckmarkOutline } from "@vicons/ionicons5";
 import { useAdminStore } from "./store";
+import IcpFooter from "@/components/IcpFooter.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -43,6 +49,8 @@ function logout() { store.logout(); router.replace("/login"); }
 .brand img { width: 34px; height: 34px; border-radius: 5px; }
 .collapse-button { position: absolute; bottom: 12px; left: 8px; width: calc(100% - 16px); color: #cbd5e1; }
 .topbar { height: 60px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; background: #fff; font-weight: 600; }
-.content { background: #f5f7fa; padding: 24px; min-height: calc(100vh - 60px); }
-@media (max-width: 700px) { .content { padding: 12px; } .topbar { padding: 0 12px; } }
+.content { background: #f5f7fa; min-height: calc(100vh - 60px); }
+.content-stack { min-height: calc(100vh - 60px); display: flex; flex-direction: column; }
+.content-body { flex: 1 0 auto; padding: 24px; }
+@media (max-width: 700px) { .content-body { padding: 12px; } .topbar { padding: 0 12px; } }
 </style>

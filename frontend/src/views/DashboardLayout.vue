@@ -27,8 +27,11 @@
           <n-button text @click="handleLogout">退出</n-button>
         </n-space>
       </n-layout-header>
-      <n-layout-content style="padding:24px;background:#F5F7FA">
-        <router-view />
+      <n-layout-content class="dashboard-content">
+        <div class="dashboard-stack">
+          <main class="dashboard-page"><router-view /></main>
+          <IcpFooter />
+        </div>
       </n-layout-content>
     </n-layout>
   </n-layout>
@@ -39,6 +42,7 @@ import { useRouter, useRoute } from "vue-router";
 import { NLayout, NLayoutSider, NLayoutHeader, NLayoutContent, NMenu, NButton, NIcon, NTag, NSpace } from "naive-ui";
 import { PeopleOutline, CubeOutline, ScanOutline, SettingsOutline, ChevronBack, ChevronForward, ArrowBack } from "@vicons/ionicons5";
 import { useAuthStore } from "@/stores/auth";
+import IcpFooter from "@/components/IcpFooter.vue";
 import type { MenuOption } from "naive-ui";
 
 const router = useRouter();
@@ -91,4 +95,10 @@ function onMenuChange(key: string) { router.push(key); }
 function handleLogout() { auth.logout(); router.replace("/login"); }
 onMounted(() => { if (!auth.user) { auth.fetchMe().catch(() => { auth.logout(); router.replace("/login"); }); } });
 </script>
-<style>.n-menu{background:transparent!important}</style>
+<style>
+.n-menu { background: transparent !important; }
+.dashboard-content { background: #f5f7fa; }
+.dashboard-stack { min-height: calc(100vh - 56px); display: flex; flex-direction: column; }
+.dashboard-page { flex: 1 0 auto; padding: 24px; }
+@media (max-width: 700px) { .dashboard-page { padding: 12px; } }
+</style>

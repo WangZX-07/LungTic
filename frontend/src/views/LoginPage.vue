@@ -58,6 +58,7 @@
         </div>
       </section>
     </main>
+    <IcpFooter inverse />
     <ResetPasswordModal v-model:show="showResetModal" />
   </div>
 </template>
@@ -71,6 +72,7 @@ import { useAuthStore } from "@/stores/auth";
 import { getServerConnection, isPackagedClinicalClient, saveServerConnection } from "@/api/server";
 import TextCaptcha from "@/components/TextCaptcha.vue";
 import ResetPasswordModal from "@/components/ResetPasswordModal.vue";
+import IcpFooter from "@/components/IcpFooter.vue";
 
 const router = useRouter();
 const route = useRoute();
@@ -157,8 +159,8 @@ async function handleLogin() {
 <style scoped>
 .login-page {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
   padding: 32px;
   background: linear-gradient(135deg, #155eac 0%, #237fd0 58%, #53a3e8 100%);
 }
@@ -171,6 +173,7 @@ async function handleLogin() {
   border-radius: 18px;
   overflow: hidden;
   box-shadow: 0 22px 65px rgba(12, 49, 95, 0.22);
+  margin: auto;
 }
 .identity-panel {
   min-width: 0;

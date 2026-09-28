@@ -17,6 +17,7 @@
       </n-form>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
     </section>
+    <IcpFooter />
   </main>
 </template>
 <script setup lang="ts">
@@ -24,6 +25,7 @@ import { ref } from "vue";
 import { useRouter } from "vue-router";
 import { NForm, NFormItem, NInput, NButton } from "naive-ui";
 import TextCaptcha from "@/components/TextCaptcha.vue";
+import IcpFooter from "@/components/IcpFooter.vue";
 import api from "./api";
 import { useAdminStore } from "./store";
 
@@ -51,8 +53,8 @@ async function submit() {
 }
 </script>
 <style scoped>
-.admin-login { min-height: 100vh; display: grid; place-items: center; background: #f1f5f9; padding: 24px; }
-.login-panel { width: min(100%, 420px); padding: 40px; border-radius: 12px; background: #fff; box-shadow: 0 8px 32px #0f172a15; }
+.admin-login { min-height: 100vh; display: flex; flex-direction: column; align-items: center; background: #f1f5f9; padding: 24px; }
+.login-panel { width: min(100%, 420px); padding: 40px; border-radius: 12px; background: #fff; box-shadow: 0 8px 32px #0f172a15; margin: auto; }
 .logo { width: 48px; height: 48px; border-radius: 9px; }
 .eyebrow { margin: 20px 0 8px; color: #1565c0; font-size: 12px; font-weight: 700; letter-spacing: .08em; }
 h1 { margin: 0; color: #172033; font-size: 25px; }
