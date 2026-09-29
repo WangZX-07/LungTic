@@ -354,8 +354,10 @@ import {
 import TiciViewport from "@/components/tici/TiciViewport.vue";
 import { closeTiciFile, loadTiciSlice, openTiciFile } from "@/features/tici/api";
 import { getPhaseIndex, type TiciViewerInfo } from "@/features/tici/types";
+import { readClientPreferences } from "@/stores/preferences";
 
 const message = useMessage();
+const initialPreferences = readClientPreferences();
 const pageRef = ref<HTMLElement>();
 const fileInputRef = ref<HTMLInputElement>();
 const replaceInputRef = ref<HTMLInputElement>();
@@ -378,7 +380,7 @@ const windowCenter = ref(0.5);
 const windowWidth = ref(1);
 const windowInitialized = ref(false);
 const showMask = ref(true);
-const maskOpacity = ref(0.45);
+const maskOpacity = ref(initialPreferences.maskOpacityPercent / 100);
 const zoom = ref(1);
 const playing = ref(false);
 const playbackFps = ref(3);

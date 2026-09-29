@@ -1,5 +1,6 @@
 import axios from "axios";
 import { clientApiBaseUrl, getClientToken, setClientToken } from "./server";
+import { getInferenceTimeoutMs } from "@/stores/preferences";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
@@ -8,6 +9,9 @@ const api = axios.create({
 
 api.interceptors.request.use(async (config) => {
   config.baseURL = await clientApiBaseUrl();
+  if (/\/(segmentation\/run|trajectory\/predict|igtv\/reconstruct)(?:\?|$)/.test(config.url || "")) {
+    config.timeout = getInferenceTimeoutMs();
+  }
   const token = getClientToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;

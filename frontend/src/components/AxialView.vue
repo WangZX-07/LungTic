@@ -86,8 +86,11 @@ import {
 } from "@vicons/ionicons5";
 import api from "@/api";
 import Filmstrip from "@/components/Filmstrip.vue";
+import { getWindowPreset, readClientPreferences } from "@/stores/preferences";
 
 const props = defineProps<{ studyId: number }>();
+const initialPreferences = readClientPreferences();
+const initialWindow = getWindowPreset(initialPreferences.defaultPreset);
 
 const canvasAreaRef = ref<HTMLDivElement>();
 const cornerstoneElementRef = ref<HTMLDivElement>();
@@ -110,10 +113,10 @@ const hasImage = ref(false);
 const imageLoading = ref(false);
 const imageBase64 = ref("");
 
-const windowWidth = ref(400);
-const windowCenter = ref(40);
+const windowWidth = ref(initialWindow.width);
+const windowCenter = ref(initialWindow.center);
 const showMask = ref(false);
-const maskOpacity = ref(0.5);
+const maskOpacity = ref(initialPreferences.maskOpacityPercent / 100);
 const diceScore = ref<number | null>(null);
 const modelVersion = ref("");
 const segLoading = ref(false);
@@ -194,7 +197,7 @@ async function loadCornerstoneImage() {
     if (cornerstoneViewport) {
       const stack = [imageId];
       await cornerstoneViewport.setStack(stack);
-      cornerstoneViewport.render();
+      updateWindowing();
     }
   } catch {
     // Fallback to base64
@@ -250,7 +253,7 @@ function setPreset(type: string) {
   updateWindowing();
 }
 
-function resetWindowing() { windowWidth.value = 400; windowCenter.value = 40; updateWindowing(); }
+function resetWindowing() { setPreset(readClientPreferences().defaultPreset); }
 
 function zoomIn() { if (useCornerstone.value && cornerstoneViewport) { try { const zoom = cornerstoneViewport.getZoom() || 1; cornerstoneViewport.setZoom(zoom * 1.25); cornerstoneViewport.render(); } catch {} } }
 function zoomOut() { if (useCornerstone.value && cornerstoneViewport) { try { const zoom = cornerstoneViewport.getZoom() || 1; cornerstoneViewport.setZoom(zoom * 0.8); cornerstoneViewport.render(); } catch {} } }

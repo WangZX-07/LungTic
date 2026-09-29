@@ -101,7 +101,7 @@
               <div class="setting-label">推理超时</div>
               <div class="setting-desc">单次 AI 推理最大等待时间</div>
             </div>
-            <n-input-number v-model:value="inferenceTimeout" :min="30" :max="600" style="width:100px"><template #suffix>秒</template></n-input-number>
+            <n-input-number v-model:value="inferenceTimeoutSeconds" :min="30" :max="600" style="width:100px"><template #suffix>秒</template></n-input-number>
           </div>
         </n-space>
       </n-card>
@@ -121,7 +121,7 @@
               <div class="setting-label">Mask 默认透明度</div>
               <div class="setting-desc">分割结果叠加层的初始透明度</div>
             </div>
-            <n-slider v-model:value="maskOpacity" :min="10" :max="100" :step="5" style="width:120px" />
+            <n-slider v-model:value="maskOpacityPercent" :min="10" :max="100" :step="5" style="width:120px" />
           </div>
         </n-space>
       </n-card>
@@ -130,8 +130,8 @@
       <n-card title="关于" size="small">
         <n-space vertical :size="8">
           <div class="about-row"><span class="about-label">应用名称</span><span>LungTic</span></div>
-          <div class="about-row"><span class="about-label">版本</span><n-tag size="tiny" :bordered="false">v0.2.0</n-tag></div>
-          <div class="about-row"><span class="about-label">技术栈</span><span>Electron 30 + Vue 3 + FastAPI + PyTorch</span></div>
+          <div class="about-row"><span class="about-label">版本</span><n-tag size="tiny" :bordered="false">v0.1.0</n-tag></div>
+          <div class="about-row"><span class="about-label">技术栈</span><span>Electron 32 + Vue 3 + FastAPI + PyTorch</span></div>
           <div class="about-row"><span class="about-label">设计系统</span><span>8pt Grid · Naive UI</span></div>
           <n-divider style="margin:8px 0" />
           <div class="about-row"><span class="about-label">AI 模型</span><span>Attention U-Net · BiLSTM + TCN</span></div>
@@ -139,11 +139,11 @@
         </n-space>
       </n-card>
 
-      <!-- 数据管理 -->
-      <n-card title="数据管理" size="small">
+      <!-- 本地偏好 -->
+      <n-card title="本地偏好" size="small">
         <n-space vertical :size="8">
-          <p class="text-muted">清除本地缓存和临时文件</p>
-          <n-button type="error" ghost size="small" @click="clearCache">清除缓存</n-button>
+          <p class="text-muted">将侧边栏、主题、动画、推理超时和影像显示选项恢复默认值，不影响账号和医院连接。</p>
+          <n-button type="warning" ghost size="small" @click="resetPreferences">恢复默认设置</n-button>
         </n-space>
       </n-card>
     </n-space>
@@ -152,9 +152,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
+import { storeToRefs } from "pinia";
 import { useRouter } from "vue-router";
 import { useThemeStore } from "@/stores/theme";
 import { useAuthStore } from "@/stores/auth";
+import { usePreferencesStore } from "@/stores/preferences";
 import api from "@/api";
 import { getServerConnection, isPackagedClinicalClient, saveServerConnection } from "@/api/server";
 import { NSpace, NCard, NSwitch, NTag, NDivider, NInputNumber, NInput, NSelect, NSlider, NButton, useMessage } from "naive-ui";
@@ -163,12 +165,15 @@ const message = useMessage();
 const router = useRouter();
 const themeStore = useThemeStore();
 const authStore = useAuthStore();
+const preferencesStore = usePreferencesStore();
+const {
+  sidebarCollapsed,
+  animationsEnabled,
+  inferenceTimeoutSeconds,
+  defaultPreset,
+  maskOpacityPercent,
+} = storeToRefs(preferencesStore);
 
-const sidebarCollapsed = ref(false);
-const animationsEnabled = ref(true);
-const inferenceTimeout = ref(120);
-const defaultPreset = ref("lung");
-const maskOpacity = ref(50);
 const profileEmail = ref("");
 const profilePhone = ref("");
 const profileSaving = ref(false);
@@ -235,7 +240,11 @@ async function saveProfile() {
   } finally { profileSaving.value = false; }
 }
 
-function clearCache() { localStorage.removeItem("lungtic_settings"); message.success("缓存已清除"); }
+function resetPreferences() {
+  preferencesStore.reset();
+  themeStore.setTheme("light");
+  message.success("本地偏好已恢复默认值");
+}
 
 onMounted(async () => {
   await loadConnectionSettings();
@@ -252,7 +261,7 @@ onMounted(async () => {
 .settings-page { max-width: 680px; }
 .page-title { font-size: 20px; font-weight: 600; margin-bottom: 24px; }
 .setting-row { display: flex; justify-content: space-between; align-items: center; }
-.setting-label { font-size: 14px; color: #1E293B; font-weight: 500; }
+.setting-label { font-size: 14px; color: var(--color-text); font-weight: 500; }
 .setting-desc { font-size: 12px; color: #94A3B8; margin-top: 2px; }
 .about-row { display: flex; align-items: center; gap: 12px; font-size: 13px; }
 .about-label { color: #64748B; width: 64px; flex-shrink: 0; }

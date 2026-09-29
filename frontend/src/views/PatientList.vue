@@ -7,12 +7,30 @@
         <n-space>
           <n-input v-if="auth.isDoctor && !auth.isAdmin" v-model:value="overridePatientId" placeholder="患者编码" style="width:180px" size="small" clearable />
           <n-button v-if="auth.isDoctor && !auth.isAdmin" size="small" @click="createPatient">创建病例</n-button>
-          <n-upload v-if="auth.isDoctor && !auth.isAdmin" multiple accept=".dcm,.nii,.nii.gz,.tici" :show-file-list="true" :custom-request="handleFileUpload">
-            <n-button type="primary"><template #icon><n-icon><CloudUploadOutline /></n-icon></template>上传 DICOM / NIfTI / TICI</n-button>
+          <n-upload v-if="auth.isDoctor && !auth.isAdmin" accept=".dcm,.nii,.nii.gz,.tici" :show-file-list="true" :custom-request="handleFileUpload">
+            <n-button type="primary"><template #icon><n-icon><CloudUploadOutline /></n-icon></template>上传单个文件</n-button>
           </n-upload>
-          <n-upload v-if="auth.isDoctor && !auth.isAdmin" multiple accept=".dcm" directory-dnd :show-file-list="true" :custom-request="handleFolderUpload">
-            <n-button type="info"><template #icon><n-icon><FolderOpenOutline /></n-icon></template>上传 DICOM 文件夹</n-button>
-          </n-upload>
+          <input
+            v-if="auth.isDoctor && !auth.isAdmin"
+            ref="folderInput"
+            class="folder-input"
+            type="file"
+            accept=".dcm"
+            multiple
+            webkitdirectory
+            directory
+            @change="handleFolderSelection"
+          />
+          <n-button
+            v-if="auth.isDoctor && !auth.isAdmin"
+            type="info"
+            :loading="folderUploading"
+            :disabled="folderUploading"
+            @click="chooseDicomFolder"
+          >
+            <template #icon><n-icon><FolderOpenOutline /></n-icon></template>
+            {{ folderUploading ? `正在上传 ${folderFileCount} 个文件（${folderUploadProgress}%）` : "上传 DICOM 文件夹" }}
+          </n-button>
         </n-space>
       </n-space>
       <n-spin :show="loading">
@@ -125,6 +143,10 @@ const showDetail = ref(false);
 const selectedPatient = ref<any>(null);
 const selectedStudies = ref<any[]>([]);
 const overridePatientId = ref("");
+const folderInput = ref<HTMLInputElement | null>(null);
+const folderUploading = ref(false);
+const folderFileCount = ref(0);
+const folderUploadProgress = ref(0);
 
 const patientInfo = ref<any>(null);
 const myStudies = ref<any[]>([]);
@@ -235,18 +257,60 @@ async function handleFileUpload({ file, onFinish, onError }: any) {
   }
 }
 
-async function handleFolderUpload({ file, onFinish, onError }: any) {
-  const rawFile = file.file as File;
-  if (!rawFile) { onError(); return; }
+function chooseDicomFolder() {
+  if (!folderUploading.value) folderInput.value?.click();
+}
+
+async function handleFolderSelection(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const selectedFiles = Array.from(input.files || []);
+  input.value = "";
+
+  const dicomFiles = selectedFiles.filter((file) => file.name.toLowerCase().endsWith(".dcm"));
+  if (dicomFiles.length === 0) {
+    message.warning("所选文件夹中没有 .dcm 文件");
+    return;
+  }
+  if (dicomFiles.length !== selectedFiles.length) {
+    message.warning(`已忽略 ${selectedFiles.length - dicomFiles.length} 个非 DICOM 文件`);
+  }
+  if (dicomFiles.length > 512) {
+    message.error(`文件夹包含 ${dicomFiles.length} 个 DICOM 文件，单次最多上传 512 个`);
+    return;
+  }
+  const totalBytes = dicomFiles.reduce((sum, file) => sum + file.size, 0);
+  if (totalBytes > 512 * 1024 * 1024) {
+    message.error(`文件夹大小为 ${formatFileSize(totalBytes)}，单次上传不能超过 512 MB`);
+    return;
+  }
+
   const formData = new FormData();
-  formData.append("files", rawFile);
+  for (const file of dicomFiles) formData.append("files", file, file.name);
   if (overridePatientId.value) formData.append("patient_id_override", overridePatientId.value);
+  folderUploading.value = true;
+  folderFileCount.value = dicomFiles.length;
+  folderUploadProgress.value = 0;
   try {
-    await api.post("/dicom/upload", formData);
-    message.success(`上传成功: ${rawFile.name}`);
-    if (auth.isPatient) fetchMyData(); else fetchPatients();
-    onFinish();
-  } catch (e: any) { message.error(`上传失败: ${rawFile.name}`); onError(); }
+    const response = await api.post("/dicom/upload", formData, {
+      timeout: 600_000,
+      onUploadProgress(progressEvent) {
+        if (progressEvent.total) {
+          folderUploadProgress.value = Math.min(99, Math.round(progressEvent.loaded / progressEvent.total * 100));
+        }
+      },
+    });
+    folderUploadProgress.value = 100;
+    const studyCount = Array.isArray(response.data?.studies) ? response.data.studies.length : 0;
+    message.success(`已上传 ${response.data?.total_files || dicomFiles.length} 个 DICOM 文件，识别 ${studyCount} 项检查`);
+    await fetchPatients();
+  } catch (e: any) {
+    const detail = e.response?.data?.detail;
+    message.error(`文件夹上传失败${detail ? `：${detail}` : "，请检查文件和网络连接"}`);
+  } finally {
+    folderUploading.value = false;
+    folderFileCount.value = 0;
+    folderUploadProgress.value = 0;
+  }
 }
 
 async function fetchMyData() {
@@ -277,13 +341,14 @@ onMounted(() => {
 
 <style scoped>
 .patient-list { max-width: 1024px; }
-.empty { padding: 64px 48px; text-align: center; color: #64748B; background: #FFFFFF; border-radius: 8px; border: 1px solid #E2E8F0; }
+.empty { padding: 64px 48px; text-align: center; color: var(--color-text-secondary); background: var(--color-surface); border-radius: 8px; border: 1px solid var(--color-border); }
 .empty p { margin-top: 16px; font-size: 14px; }
 .hint { font-size: 12px !important; color: #94A3B8 !important; margin-top: 8px !important; }
-.patients-table { background: #FFFFFF; border-radius: 8px; border: 1px solid #E2E8F0; }
-.patients-table :deep(.n-data-table-th) { background: #F8FAFC; font-weight: 600; }
+.patients-table { background: var(--color-surface); border-radius: 8px; border: 1px solid var(--color-border); }
+.patients-table :deep(.n-data-table-th) { background: var(--color-surface); font-weight: 600; }
 .detail-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 2px 0; }
 .detail-label { color: #64748B; width: 56px; flex-shrink: 0; }
 .section-label { font-size: 13px; font-weight: 600; color: #64748B; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.3px; }
 .text-muted { font-size: 12px; color: #94A3B8; }
+.folder-input { display: none; }
 </style>

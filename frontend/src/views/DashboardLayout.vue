@@ -13,13 +13,13 @@
       </div>
     </n-layout-sider>
     <n-layout>
-      <n-layout-header bordered style="display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:56px;background:#fff">
+      <n-layout-header bordered style="display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:56px;background:var(--color-surface)">
         <div style="display:flex;align-items:center;gap:8px">
           <n-button v-if="isStudyPage" text size="small" @click="router.push('/dashboard/patients')">
             <template #icon><n-icon><ArrowBack /></n-icon></template>
             返回患者列表
           </n-button>
-          <span style="font-size:16px;font-weight:600;color:#1E293B">{{ pageTitle }}</span>
+          <span style="font-size:16px;font-weight:600;color:var(--color-text)">{{ pageTitle }}</span>
         </div>
         <n-space align="center" :size="12">
           <n-tag size="small" :type="roleTagType">{{ roleLabel }}</n-tag>
@@ -37,19 +37,22 @@
   </n-layout>
 </template>
 <script setup lang="ts">
-import { ref, computed, h, onMounted } from "vue";
+import { computed, h, onMounted } from "vue";
+import { storeToRefs } from "pinia";
 import { useRouter, useRoute } from "vue-router";
 import { NLayout, NLayoutSider, NLayoutHeader, NLayoutContent, NMenu, NButton, NIcon, NTag, NSpace } from "naive-ui";
 import { PeopleOutline, CubeOutline, ScanOutline, SettingsOutline, ChevronBack, ChevronForward, ArrowBack } from "@vicons/ionicons5";
 import { useAuthStore } from "@/stores/auth";
+import { usePreferencesStore } from "@/stores/preferences";
 import IcpFooter from "@/components/IcpFooter.vue";
 import type { MenuOption } from "naive-ui";
 
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
+const preferencesStore = usePreferencesStore();
+const { sidebarCollapsed: collapsed } = storeToRefs(preferencesStore);
 const standaloneViewer = import.meta.env.VITE_STANDALONE_VIEWER === "true";
-const collapsed = ref(false);
 const isStudyPage = computed(() => route.path.startsWith("/dashboard/study"));
 const activeMenu = computed(() => route.path.startsWith("/dashboard/study") ? "/dashboard/patients" : route.path);
 
@@ -97,7 +100,7 @@ onMounted(() => { if (!auth.user) { auth.fetchMe().catch(() => { auth.logout(); 
 </script>
 <style>
 .n-menu { background: transparent !important; }
-.dashboard-content { background: #f5f7fa; }
+.dashboard-content { background: var(--color-bg); }
 .dashboard-stack { min-height: calc(100vh - 56px); display: flex; flex-direction: column; }
 .dashboard-page { flex: 1 0 auto; padding: 24px; }
 @media (max-width: 700px) { .dashboard-page { padding: 12px; } }
