@@ -23,7 +23,7 @@ npm run dev:admin            # 管理后台：http://localhost:5174/admin.html
 npm run electron:client:dev  # Electron 开发窗口
 ```
 
-安装后的桌面端首次登录前，在登录页填写医院服务端 HTTPS 根地址（例如 `https://clinical.example.org`，不带 `/api`）和服务器公钥的 SHA-256 指纹。安装版不接受 HTTP，即使服务位于本机；本机 Vite 开发代理可使用 HTTP。医院管理员须从实际部署的 TLS 证书 PEM 文件独立计算指纹，例如在 `frontend` 目录运行 `node scripts/show-server-pin.js C:\path\to\server-cert.pem`，再通过可信渠道交给客户端使用者。客户端同时要求操作系统认可证书链、主机名匹配、公钥指纹匹配；证书私钥切勿分发给客户端。服务器公钥变更后需重新配置指纹。
+正式客户端已内置 `https://clinical.respulse.top` 和当前服务器公钥 SHA-256 指纹，首次启动直接进入登录页。设置页仍可重新配置其他医院服务端。安装版不接受 HTTP，即使服务位于本机；本机 Vite 开发代理可使用 HTTP。医院管理员须从实际部署的 TLS 证书 PEM 文件独立计算新指纹，例如在 `frontend` 目录运行 `node scripts/show-server-pin.js C:\path\to\server-cert.pem`。客户端同时要求操作系统认可证书链、主机名匹配、公钥指纹匹配；证书私钥切勿分发给客户端。服务器公钥变更后须发布内置新指纹的客户端，或在设置页重新配置。
 
 安装版用 Windows 安全存储加密保存服务地址和指纹，登录令牌仅保留在当前进程内存中，关闭后需重新登录。地址仍是联网所必需的连接信息，网络侧仍能观察到目的主机；TLS 保护传输内容。不要在安装包内放共享 API 密钥。若医院还要求每台终端用独立私钥证明设备身份，应在内网 HTTPS 代理处部署双向 TLS，并为每台设备分别签发、撤销证书。
 

@@ -1,5 +1,13 @@
 const { createHash, timingSafeEqual, X509Certificate } = require("node:crypto");
 
+const DEFAULT_CONNECTION = Object.freeze({
+  origin: "https://clinical.respulse.top",
+  pin: "b6f5a401faf49c8b187e95f12ce6b3339fd80e9e5cd911140e92896a1d9d4085",
+});
+const LEGACY_DEFAULT_PINS = new Set([
+  "a67a2f77197a453e13962cd577ed35ecee64cb87cbda48fa1c50cba539de5eee",
+]);
+
 function normalizeConnection(input) {
   if (!input || typeof input.origin !== "string" || typeof input.pin !== "string") {
     throw new Error("请输入医院服务端地址和公钥指纹");
@@ -16,6 +24,19 @@ function normalizeConnection(input) {
     throw new Error("公钥 SHA-256 指纹须为 64 位十六进制字符");
   }
   return { origin: url.origin, pin };
+}
+
+function bundledConnection() {
+  return { ...DEFAULT_CONNECTION };
+}
+
+function normalizeStoredConnection(input) {
+  const normalized = normalizeConnection(input);
+  if (normalized.origin === DEFAULT_CONNECTION.origin
+      && LEGACY_DEFAULT_PINS.has(normalized.pin)) {
+    return bundledConnection();
+  }
+  return normalized;
 }
 
 function publicKeyPin(pem) {
@@ -36,4 +57,11 @@ function isTrustedServer(request, connection) {
   } catch { return false; }
 }
 
-module.exports = { normalizeConnection, publicKeyPin, isTrustedServer };
+module.exports = {
+  DEFAULT_CONNECTION,
+  bundledConnection,
+  normalizeConnection,
+  normalizeStoredConnection,
+  publicKeyPin,
+  isTrustedServer,
+};

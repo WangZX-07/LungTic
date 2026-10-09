@@ -2,7 +2,10 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { normalizeConnection, publicKeyPin, isTrustedServer } = require("./connection");
+const {
+  DEFAULT_CONNECTION, bundledConnection, normalizeConnection, normalizeStoredConnection,
+  publicKeyPin, isTrustedServer,
+} = require("./connection");
 
 const pem = fs.readFileSync(path.join(__dirname, "test-fixtures/synthetic-server.crt"), "utf8");
 const pin = publicKeyPin(pem);
@@ -29,4 +32,15 @@ test("requires system trust, matching host, and matching public key", () => {
   assert.equal(isTrustedServer({ ...request, verificationResult: "CERT_AUTHORITY_INVALID" }, connection), false);
   assert.equal(isTrustedServer(request, { ...connection, pin: "0".repeat(64) }), false);
   assert.equal(isTrustedServer({ ...request, certificate: { data: "invalid" } }, connection), false);
+});
+
+test("provides the bundled production connection and migrates the previous pin", () => {
+  assert.deepEqual(bundledConnection(), DEFAULT_CONNECTION);
+  assert.notEqual(bundledConnection(), DEFAULT_CONNECTION);
+  assert.deepEqual(normalizeStoredConnection({
+    origin: "https://clinical.respulse.top",
+    pin: "a67a2f77197a453e13962cd577ed35ecee64cb87cbda48fa1c50cba539de5eee",
+  }), DEFAULT_CONNECTION);
+  const custom = { origin: "https://clinical.example.org", pin };
+  assert.deepEqual(normalizeStoredConnection(custom), custom);
 });

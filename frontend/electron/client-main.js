@@ -1,6 +1,8 @@
 const { app, BrowserWindow, ipcMain, net, protocol, safeStorage, session } = require("electron");
 const fs = require("node:fs");
-const { normalizeConnection, isTrustedServer } = require("./connection");
+const {
+  bundledConnection, normalizeConnection, normalizeStoredConnection, isTrustedServer,
+} = require("./connection");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
@@ -19,10 +21,10 @@ function connectionFile() {
 
 function loadConnection() {
   const file = connectionFile();
-  if (!fs.existsSync(file)) return null;
+  if (!fs.existsSync(file)) return bundledConnection();
   if (!safeStorage.isEncryptionAvailable()) throw new Error("系统安全存储不可用");
   try {
-    return normalizeConnection(JSON.parse(safeStorage.decryptString(fs.readFileSync(file))));
+    return normalizeStoredConnection(JSON.parse(safeStorage.decryptString(fs.readFileSync(file))));
   } catch {
     throw new Error("医院连接配置无法解密，请重新配置客户端");
   }
@@ -105,7 +107,7 @@ else {
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     if (app.isPackaged) {
       try { connection = loadConnection(); }
-      catch { connection = null; }
+      catch { connection = bundledConnection(); }
       session.defaultSession.setCertificateVerifyProc((request, callback) => {
         callback(isTrustedServer(request, connection) ? 0 : -2);
       });
