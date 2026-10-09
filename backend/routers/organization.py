@@ -13,6 +13,7 @@ from models.db_models import (
 )
 from routers.auth import get_current_user, require_admin
 from services.access_control import audit
+from services.notification_service import create_notification
 
 router = APIRouter(prefix="/api/organization", tags=["organization"])
 
@@ -183,7 +184,7 @@ def set_care_assignment(
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if not patient:
         raise HTTPException(404, "Patient not found")
-    _doctor(db, user_id)
+    doctor = _doctor(db, user_id)
     membership = db.query(DepartmentMembership).filter(
         DepartmentMembership.user_id == user_id,
         DepartmentMembership.department_id == req.department_id,
@@ -196,6 +197,7 @@ def set_care_assignment(
         PatientCareAssignment.user_id == user_id,
         PatientCareAssignment.department_id == req.department_id,
     ).first()
+    was_active = bool(assignment.active) if assignment is not None else False
     if assignment is None:
         assignment = PatientCareAssignment(
             patient_id=patient_id, user_id=user_id,
@@ -209,6 +211,15 @@ def set_care_assignment(
         patient.primary_department_id = req.department_id
     db.commit()
     audit(db, admin, "set_care_assignment", "patient", patient_id, patient_id, True)
+    if was_active != req.active:
+        create_notification(
+            db,
+            user_id=doctor.id,
+            kind="care_team_added" if req.active else "care_team_removed",
+            title="诊疗组调整",
+            message="您已加入一个患者的诊疗组。" if req.active else "您已从一个患者的诊疗组中移出。",
+            target_path="/dashboard/patients",
+        )
     return {"patient_id": patient_id, "user_id": user_id, "department_id": req.department_id, "active": assignment.active}
 
 
@@ -244,7 +255,7 @@ def create_grant(
         raise HTTPException(404, "Patient not found")
     if not _can_manage_grants(db, current_user, patient):
         raise HTTPException(403, "Grant manager required")
-    _doctor(db, req.grantee_user_id)
+    grantee = _doctor(db, req.grantee_user_id)
     now = datetime.utcnow()
     grant = AccessGrant(
         patient_id=patient_id,
@@ -259,6 +270,14 @@ def create_grant(
     db.commit()
     db.refresh(grant)
     audit(db, current_user, "create_grant", "grant", grant.id, patient_id, True)
+    create_notification(
+        db,
+        user_id=grantee.id,
+        kind="access_grant_created",
+        title="获得临时访问授权",
+        message="您获得了一项限时病例访问权限，请点击查看患者列表。",
+        target_path="/dashboard/patients",
+    )
     return {"id": grant.id, "patient_id": patient_id, "expires_at": grant.expires_at, "can_write": grant.can_write}
 
 
@@ -274,9 +293,19 @@ def revoke_grant(
         raise HTTPException(404, "Grant not found")
     if not _can_manage_grants(db, current_user, patient):
         raise HTTPException(403, "Grant manager required")
+    was_active = grant.revoked_at is None
     grant.revoked_at = datetime.utcnow()
     db.commit()
     audit(db, current_user, "revoke_grant", "grant", grant_id, patient.id, True)
+    if was_active:
+        create_notification(
+            db,
+            user_id=grant.grantee_user_id,
+            kind="access_grant_revoked",
+            title="临时访问授权已撤销",
+            message="您的一项限时病例访问权限已被撤销。",
+            target_path="/dashboard/patients",
+        )
     return {"id": grant_id, "revoked": True}
 
 

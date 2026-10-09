@@ -210,3 +210,15 @@ class AuditEvent(Base):
     resource_id = Column(Integer, nullable=True)
     allowed = Column(Boolean, nullable=False)
     created_at = Column(DateTime, nullable=False)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    kind = Column(String(32), nullable=False)
+    title = Column(String(128), nullable=False)
+    message = Column(String(512), nullable=False)
+    target_path = Column(String(256), nullable=True)
+    is_read = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False, index=True)

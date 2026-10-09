@@ -15,6 +15,7 @@ from models.db_models import User, Patient, Study, Series, Slice, Segmentation, 
 from config import DICOM_DIR, TICI_DIR, TICI_VIEWER_DIR
 from datetime import datetime
 from services.access_control import require_study, patient_for_upload, upload_department, audit
+from services.notification_service import create_notification
 
 # Add ui/ to path so we can import tici package
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -477,6 +478,14 @@ def import_tici(
         db.commit()
         committed = True
         audit(db, current_user, "import_tici", "study", study.id, patient.id, True)
+        create_notification(
+            db,
+            user_id=patient.user_id,
+            kind="imaging_uploaded",
+            title="新的影像检查",
+            message="您的账号中新增了一项影像检查，点击查看。",
+            target_path="/dashboard/patients",
+        )
 
         return {
             "status": "ok",

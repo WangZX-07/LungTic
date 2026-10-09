@@ -4,7 +4,7 @@
 
 ## 1. 初始化
 
-在空 MySQL 8 数据库中执行 `database/schema.sql`；已有 LungTic 数据库先备份，然后依次执行尚未执行的 `database/migrations/phase3.sql` 和 `database/migrations/phase4_record_encryption.sql`（每个迁移只执行一次）。如果已执行阶段 3，只执行阶段 4。旧患者迁移后没有诊疗分配，普通医师默认看不到，须由管理员核实后分配。不要把病例、备份或密钥提交到 GitHub。
+在空 MySQL 8 数据库中执行 `database/schema.sql`；已有 LungTic 数据库先备份，然后依次执行尚未执行的 `database/migrations/phase3.sql`、`database/migrations/phase4_record_encryption.sql` 和 `database/migrations/phase5_internal_notifications.sql`（每个迁移只执行一次）。旧患者迁移后没有诊疗分配，普通医师默认看不到，须由管理员核实后分配。不要把病例、备份或密钥提交到 GitHub。
 
 PowerShell 示例（将占位值换成私有配置，不写进仓库）：
 
@@ -48,6 +48,7 @@ python -m uvicorn main:app --host 127.0.0.1 --port 8000
 | 患者可见范围 | `PUT /api/records/{id}/visibility` | 有该患者写入权 |
 | DICOM/NIfTI、TICI | `POST /api/dicom/upload`、`POST /api/tici/import` | 有效科室成员的医师；已有患者须有写入权 |
 | 审计查询 | `GET /api/organization/audit-events` | 管理员，仅元数据 |
+| 系统信箱 | `GET /api/notifications`、`PUT /api/notifications/{id}/read` | 仅返回和更新当前登录用户自己的消息 |
 
 PDF、PNG、JPEG、DICOM、TICI **附件**采用私有文件夹和服务端随机存储键；上传校验扩展名、内容签名和 512 MB 上限，记录明文与密文 SHA-256，同一患者重复文件返回已有索引。附件使用随机单文件 AES-256-GCM 密钥加密，主密钥只用于包裹单文件密钥；下载前校验 GCM 认证标签、明文哈希、密文哈希和文件长度，失败时拒绝返回明文。可用 `GET /api/records/{id}/integrity` 主动校验。影像 DICOM 单文件上限 64 MB，单次请求总量上限 512 MB。服务端下载前校验实时权限，文件路径不出现在 API 响应中。科主任读本科室当前主责患者；会诊只在未过期、未撤销的授权范围内生效。
 
@@ -85,7 +86,7 @@ npm run build
 npm run build:admin
 ```
 
-本分支已做患者/检查/切片/TICI/AI 结果的对象级权限检查、附件认证加密与哈希校验、受控上传下载、科室与会诊授权、基础审计及前端入口。下一阶段仍需：异步与可续传的大文件处理、文件版本和更正流程、请求关联 ID、备份恢复演练、登录与上传限流、恶意文件扫描、前端令牌存储改造、机构身份集成及生产环境安全审查。当前实现不应直接用于真实患者数据的公开互联网部署。
+本分支已做患者/检查/切片/TICI/AI 结果的对象级权限检查、附件认证加密与哈希校验、受控上传下载、科室与会诊授权、基础审计、用户隔离的系统信箱及前端入口。信箱消息最多保留每位用户最近 200 条，正文不写入患者编码、诊断或文件名。下一阶段仍需：异步与可续传的大文件处理、文件版本和更正流程、请求关联 ID、备份恢复演练、登录与上传限流、恶意文件扫描、前端令牌存储改造、机构身份集成及生产环境安全审查。当前实现不应直接用于真实患者数据的公开互联网部署。
 
 加密设计依据：[cryptography 的 GCM 接口文档](https://cryptography.io/en/stable/hazmat/primitives/symmetric-encryption/)说明认证标签须在完整解密后验证；[NIST SP 800-38D](https://csrc.nist.gov/pubs/sp/800/38/d/final)规定 GCM 的认证加密用途。SHA-256 用于校验和去重，保密性与防篡改由 AES-GCM 和受保护的密钥提供。
 

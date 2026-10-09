@@ -16,12 +16,13 @@ from sqlalchemy.orm import Session
 
 from config import RECORD_DIR
 from database import get_db
-from models.db_models import ClinicalRecord, Study, User
+from models.db_models import ClinicalRecord, Patient, Study, User
 from routers.auth import get_current_user
 from services.access_control import audit, can_access_patient, require_patient, upload_department, patient_for_upload
 from services.record_crypto import (
     CHUNK_BYTES, IntegrityFailure, KeyUnavailable, seal_upload, verify_record,
 )
+from services.notification_service import create_notification
 
 router = APIRouter(prefix="/api", tags=["clinical-records"])
 
@@ -235,9 +236,20 @@ def set_record_visibility(
     if not record:
         raise HTTPException(404, "Record not found")
     require_patient(db, current_user, record.patient_id, write=True, action="set_record_visibility")
+    became_visible = req.patient_visible and not record.patient_visible
     record.patient_visible = req.patient_visible
     db.commit()
     audit(db, current_user, "set_record_visibility", "record", record_id, record.patient_id, True)
+    if became_visible:
+        patient = db.query(Patient).filter(Patient.id == record.patient_id).first()
+        create_notification(
+            db,
+            user_id=patient.user_id if patient else None,
+            kind="record_visible",
+            title="新的病历资料",
+            message="医师向您开放了一份新的病历资料，点击查看病例列表。",
+            target_path="/dashboard/patients",
+        )
     return _record_metadata(record)
 
 

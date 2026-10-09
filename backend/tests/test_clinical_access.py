@@ -31,13 +31,14 @@ from sqlalchemy.pool import StaticPool
 from main import app
 from database import Base, get_db
 from models.db_models import (
-    AccessGrant, AuditEvent, ClinicalRecord, Department, DepartmentMembership, Patient,
+    AccessGrant, AuditEvent, ClinicalRecord, Department, DepartmentMembership, Notification, Patient,
     PatientCareAssignment, Series, Slice, Study, User, UserRole,
 )
 from services.auth_service import create_access_token
 from routers import clinical_records, dicom
 from services import dicom_parser
 from services.record_crypto import IntegrityFailure, KeyUnavailable, load_keyring, rewrap_record, verify_record
+from services.notification_service import create_notification
 from encrypt_legacy_records import migrate_record
 
 
@@ -159,6 +160,56 @@ def test_patient_lists_and_direct_ids_are_scoped(api):
             AuditEvent.actor_user_id == ids["doctor_b"], AuditEvent.allowed.is_(False)
         ).count()
         assert denied >= 4
+
+
+def test_internal_notifications_are_user_scoped_and_actionable(api):
+    client, Session, ids, headers, _ = api
+    with Session() as db:
+        assert create_notification(
+            db,
+            user_id=ids["doctor_a"],
+            kind="test",
+            title="Synthetic notification",
+            message="Open the patient list.",
+            target_path="/dashboard/patients",
+        ) is True
+
+    listed = client.get("/api/notifications", headers=headers("doctor_a"))
+    assert listed.status_code == 200, listed.text
+    assert len(listed.json()) == 1
+    notification_id = listed.json()[0]["id"]
+    assert listed.json()[0]["is_read"] is False
+    assert client.get(
+        "/api/notifications/unread-count", headers=headers("doctor_a")
+    ).json()["count"] == 1
+
+    assert client.put(
+        f"/api/notifications/{notification_id}/read", headers=headers("doctor_b")
+    ).status_code == 404
+    assert client.put(
+        f"/api/notifications/{notification_id}/read", headers=headers("doctor_a")
+    ).status_code == 200
+    assert client.get(
+        "/api/notifications/unread-count", headers=headers("doctor_a")
+    ).json()["count"] == 0
+
+    grant = client.post(
+        f"/api/organization/patients/{ids['patient_a']}/grants",
+        headers=headers("head_a"),
+        json={"grantee_user_id": ids["doctor_b"], "purpose": "consultation", "hours": 1},
+    )
+    assert grant.status_code == 200, grant.text
+    doctor_b_messages = client.get(
+        "/api/notifications", headers=headers("doctor_b")
+    ).json()
+    assert doctor_b_messages[0]["kind"] == "access_grant_created"
+    serialized = json.dumps(doctor_b_messages, ensure_ascii=False)
+    assert "SYN-A" not in serialized
+    assert "consultation" not in serialized
+    with Session() as db:
+        assert db.query(Notification).filter(
+            Notification.user_id == ids["doctor_b"]
+        ).count() == 1
 
 
 def test_record_upload_visibility_grant_and_revoke(api):

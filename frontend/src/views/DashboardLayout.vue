@@ -22,6 +22,7 @@
           <span style="font-size:16px;font-weight:600;color:var(--color-text)">{{ pageTitle }}</span>
         </div>
         <n-space align="center" :size="12">
+          <NotificationInbox v-if="!standaloneViewer" />
           <n-tag size="small" :type="roleTagType">{{ roleLabel }}</n-tag>
           <n-tag size="small" type="info">{{ auth.user?.username }}</n-tag>
           <n-button text @click="handleLogout">退出</n-button>
@@ -45,6 +46,7 @@ import { PeopleOutline, CubeOutline, ScanOutline, SettingsOutline, ChevronBack, 
 import { useAuthStore } from "@/stores/auth";
 import { usePreferencesStore } from "@/stores/preferences";
 import IcpFooter from "@/components/IcpFooter.vue";
+import NotificationInbox from "@/components/NotificationInbox.vue";
 import type { MenuOption } from "naive-ui";
 
 const router = useRouter();

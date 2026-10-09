@@ -211,3 +211,16 @@ CREATE TABLE IF NOT EXISTS audit_events (
     FOREIGN KEY (actor_user_id) REFERENCES users(id),
     FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    kind VARCHAR(32) NOT NULL,
+    title VARCHAR(128) NOT NULL,
+    message VARCHAR(512) NOT NULL,
+    target_path VARCHAR(256) NULL,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at DATETIME NOT NULL,
+    INDEX ix_notifications_user_read_time (user_id, is_read, created_at),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;

@@ -15,6 +15,7 @@ from routers.auth import get_current_user
 from models.db_models import User, Patient, Study, Series, Slice
 from services.dicom_parser import parse_dicom, store_dicom, group_slices_by_phase, parse_nifti, study_storage_dir
 from services.access_control import patient_for_upload, upload_department, visible_patients, require_patient, require_study, audit
+from services.notification_service import create_notification
 from config import DICOM_DIR, TICI_DIR
 from datetime import datetime
 
@@ -210,6 +211,22 @@ def upload_dicom(
         if study_id and study_uid:
             _create_tici_from_upload(study_id, study_uid, db)
         audit(db, current_user, "upload_imaging", "study", study_id, result_item.get("patient_id"), True)
+
+    notified_patient_ids = set()
+    for result_item in results:
+        patient_id = result_item.get("patient_id")
+        if not patient_id or patient_id in notified_patient_ids:
+            continue
+        notified_patient_ids.add(patient_id)
+        patient = db.query(Patient).filter(Patient.id == patient_id).first()
+        create_notification(
+            db,
+            user_id=patient.user_id if patient else None,
+            kind="imaging_uploaded",
+            title="新的影像检查",
+            message="您的账号中新增了一项影像检查，点击查看。",
+            target_path="/dashboard/patients",
+        )
 
     return {"status": "ok", "studies": results, "total_files": total}
 
