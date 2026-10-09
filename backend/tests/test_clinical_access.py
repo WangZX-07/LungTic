@@ -33,12 +33,15 @@ from database import Base, get_db
 from models.db_models import (
     AccessGrant, AuditEvent, ClinicalRecord, Department, DepartmentMembership, Notification, Patient,
     PatientCareAssignment, Series, Slice, Study, User, UserRole,
+    SmtpSetting,
 )
 from services.auth_service import create_access_token
 from routers import clinical_records, dicom
 from services import dicom_parser
 from services.record_crypto import IntegrityFailure, KeyUnavailable, load_keyring, rewrap_record, verify_record
 from services.notification_service import create_notification
+from services import email_service
+from services.email_service import get_smtp_config
 from encrypt_legacy_records import migrate_record
 
 
@@ -210,6 +213,66 @@ def test_internal_notifications_are_user_scoped_and_actionable(api):
         assert db.query(Notification).filter(
             Notification.user_id == ids["doctor_b"]
         ).count() == 1
+
+
+def test_admin_can_manage_and_test_encrypted_smtp_settings(api, monkeypatch):
+    client, Session, _, headers, _ = api
+    sent = {}
+
+    class FakeSmtp:
+        def __init__(self, host, port, timeout, **_):
+            sent.update(host=host, port=port, timeout=timeout)
+
+        def login(self, username, password):
+            sent.update(username=username, password=password)
+
+        def sendmail(self, sender, recipient, message):
+            sent.update(sender=sender, recipient=recipient, message=message)
+
+        def quit(self):
+            sent["quit"] = True
+
+    monkeypatch.setattr(email_service.smtplib, "SMTP_SSL", FakeSmtp)
+    payload = {
+        "enabled": True,
+        "host": "smtp.example.com",
+        "port": 465,
+        "security": "ssl",
+        "username": "mailer@example.com",
+        "from_address": "mailer@example.com",
+        "password": "smtp-authorization-secret",
+    }
+    assert client.put(
+        "/api/admin/settings/smtp", headers=headers("doctor_a"), json=payload
+    ).status_code == 403
+
+    saved = client.put(
+        "/api/admin/settings/smtp", headers=headers("admin"), json=payload
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["password_configured"] is True
+    assert "password" not in saved.json()
+
+    with Session() as db:
+        row = db.query(SmtpSetting).filter(SmtpSetting.id == 1).one()
+        assert "smtp-authorization-secret" not in row.password_ciphertext
+        assert get_smtp_config(db).password == "smtp-authorization-secret"
+
+    payload["password"] = ""
+    retained = client.put(
+        "/api/admin/settings/smtp", headers=headers("admin"), json=payload
+    )
+    assert retained.status_code == 200, retained.text
+    tested = client.post(
+        "/api/admin/settings/smtp/test",
+        headers=headers("admin"),
+        json={"recipient": "receiver@example.com"},
+    )
+    assert tested.status_code == 200, tested.text
+    assert sent["host"] == "smtp.example.com"
+    assert sent["password"] == "smtp-authorization-secret"
+    assert sent["recipient"] == "receiver@example.com"
+    assert sent["quit"] is True
 
 
 def test_record_upload_visibility_grant_and_revoke(api):

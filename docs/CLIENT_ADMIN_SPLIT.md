@@ -5,7 +5,7 @@
 | 部分 | 入口与构建 | 使用者 | 作用 |
 | --- | --- | --- | --- |
 | 临床桌面端 | `frontend/index.html` / `npm run package:client` | 医生、患者 | 连接中心 API，按服务端授权查看和上传病例 |
-| 浏览器管理后台 | `frontend/admin.html` / `npm run build:admin` | 管理员 | 管理账号、科室、诊疗团队、限时授权、访问审计 |
+| 浏览器管理后台 | `frontend/admin.html` / `npm run build:admin` | 管理员 | 管理账号、科室、诊疗团队、限时授权、访问审计和密码重置邮件 |
 | 中心服务 | `backend/main.py` | 两端 | 认证、对象级权限、病历附件加密和哈希校验 |
 | 旧版离线阅片器 | `npm run package:viewer` | 本地阅片器管理员 | 本机 SQLite；不连接中心病例库 |
 

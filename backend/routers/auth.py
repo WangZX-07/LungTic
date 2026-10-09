@@ -247,9 +247,9 @@ def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
             "This code is valid for 15 minutes.\n\n"
             "If you did not request this, please ignore.\n\n"
             "LungTic Team")
-    send_email(user.email, subject, body)
+    send_email(user.email, subject, body, db=db)
 
-    return {"message": "验证码已发送至您的邮箱"}
+    return {"message": "如果该邮箱已注册，验证码已发送"}
 
 
 @router.post("/reset-password/confirm")
@@ -401,7 +401,7 @@ def create_user(
         body_lines.append("")
         body_lines.append("LungTic Team")
         body = "\n".join(body_lines)
-        send_email(req.email, subject, body)
+        send_email(req.email, subject, body, db=db)
 
     return {
         "id": user.id,
@@ -550,7 +550,7 @@ def batch_create(
         if email:
             subject = "LungTic 账号已创建"
             body = f"您好 {username}，\n\n您的 LungTic 账号已创建成功！\n\n用户名：{username}\n角色：{role}\n\n请登录后及时修改密码。\n\nLungTic Team"
-            send_email(email, subject, body)
+            send_email(email, subject, body, db=db)
 
     db.commit()
 

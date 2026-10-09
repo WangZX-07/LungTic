@@ -26,7 +26,7 @@
 import { computed, h, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { NLayout, NLayoutSider, NLayoutHeader, NLayoutContent, NMenu, NIcon, NButton, NSpace, NTag } from "naive-ui";
-import { PeopleOutline, BusinessOutline, ShieldCheckmarkOutline } from "@vicons/ionicons5";
+import { PeopleOutline, BusinessOutline, ShieldCheckmarkOutline, MailOutline } from "@vicons/ionicons5";
 import { useAdminStore } from "./store";
 import IcpFooter from "@/components/IcpFooter.vue";
 
@@ -38,8 +38,9 @@ const menuOptions = [
   { label: "用户账号", key: "/users", icon: () => h(NIcon, null, { default: () => h(PeopleOutline) }) },
   { label: "科室与授权", key: "/organization", icon: () => h(NIcon, null, { default: () => h(BusinessOutline) }) },
   { label: "访问审计", key: "/audit", icon: () => h(NIcon, null, { default: () => h(ShieldCheckmarkOutline) }) },
+  { label: "邮件设置", key: "/smtp", icon: () => h(NIcon, null, { default: () => h(MailOutline) }) },
 ];
-const pageTitle = computed(() => ({ "/users": "用户账号", "/organization": "科室与授权", "/audit": "访问审计" } as Record<string, string>)[route.path] || "管理后台");
+const pageTitle = computed(() => ({ "/users": "用户账号", "/organization": "科室与授权", "/audit": "访问审计", "/smtp": "密码重置邮件" } as Record<string, string>)[route.path] || "管理后台");
 function logout() { store.logout(); router.replace("/login"); }
 </script>
 <style scoped>

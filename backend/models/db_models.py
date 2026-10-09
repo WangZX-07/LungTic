@@ -222,3 +222,19 @@ class Notification(Base):
     target_path = Column(String(256), nullable=True)
     is_read = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime, nullable=False, index=True)
+
+
+class SmtpSetting(Base):
+    __tablename__ = "smtp_settings"
+    id = Column(Integer, primary_key=True)
+    enabled = Column(Boolean, default=True, nullable=False)
+    host = Column(String(255), nullable=False)
+    port = Column(Integer, nullable=False)
+    security = Column(String(16), nullable=False)
+    username = Column(String(255), nullable=False)
+    from_address = Column(String(255), nullable=False)
+    password_ciphertext = Column(Text, nullable=False)
+    password_nonce = Column(String(32), nullable=False)
+    key_id = Column(String(32), nullable=False)
+    updated_at = Column(DateTime, nullable=False)
+    updated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

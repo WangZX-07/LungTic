@@ -27,6 +27,7 @@ from routers.tici import router as tici_router
 from routers.organization import router as organization_router
 from routers.clinical_records import router as clinical_records_router
 from routers.notifications import router as notifications_router
+from routers.admin_settings import router as admin_settings_router
 from config import CORS_ORIGINS, SERVER_MODE, JWT_SECRET, CAPTCHA_SECRET
 from services.record_crypto import load_keyring
 
@@ -55,6 +56,7 @@ app.include_router(tici_router)
 app.include_router(organization_router)
 app.include_router(clinical_records_router)
 app.include_router(notifications_router)
+app.include_router(admin_settings_router)
 
 
 @app.get("/api/health")

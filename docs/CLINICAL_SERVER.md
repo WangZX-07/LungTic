@@ -4,7 +4,7 @@
 
 ## 1. 初始化
 
-在空 MySQL 8 数据库中执行 `database/schema.sql`；已有 LungTic 数据库先备份，然后依次执行尚未执行的 `database/migrations/phase3.sql`、`database/migrations/phase4_record_encryption.sql` 和 `database/migrations/phase5_internal_notifications.sql`（每个迁移只执行一次）。旧患者迁移后没有诊疗分配，普通医师默认看不到，须由管理员核实后分配。不要把病例、备份或密钥提交到 GitHub。
+在空 MySQL 8 数据库中执行 `database/schema.sql`；已有 LungTic 数据库先备份，然后依次执行尚未执行的 `database/migrations/phase3.sql`、`database/migrations/phase4_record_encryption.sql`、`database/migrations/phase5_internal_notifications.sql` 和 `database/migrations/phase6_smtp_settings.sql`（每个迁移只执行一次）。旧患者迁移后没有诊疗分配，普通医师默认看不到，须由管理员核实后分配。不要把病例、备份或密钥提交到 GitHub。
 
 PowerShell 示例（将占位值换成私有配置，不写进仓库）：
 
@@ -49,6 +49,7 @@ python -m uvicorn main:app --host 127.0.0.1 --port 8000
 | DICOM/NIfTI、TICI | `POST /api/dicom/upload`、`POST /api/tici/import` | 有效科室成员的医师；已有患者须有写入权 |
 | 审计查询 | `GET /api/organization/audit-events` | 管理员，仅元数据 |
 | 系统信箱 | `GET /api/notifications`、`PUT /api/notifications/{id}/read` | 仅返回和更新当前登录用户自己的消息 |
+| SMTP 设置 | `GET/PUT /api/admin/settings/smtp`、`POST /api/admin/settings/smtp/test` | 仅管理员；授权码不通过 API 返回 |
 
 PDF、PNG、JPEG、DICOM、TICI **附件**采用私有文件夹和服务端随机存储键；上传校验扩展名、内容签名和 512 MB 上限，记录明文与密文 SHA-256，同一患者重复文件返回已有索引。附件使用随机单文件 AES-256-GCM 密钥加密，主密钥只用于包裹单文件密钥；下载前校验 GCM 认证标签、明文哈希、密文哈希和文件长度，失败时拒绝返回明文。可用 `GET /api/records/{id}/integrity` 主动校验。影像 DICOM 单文件上限 64 MB，单次请求总量上限 512 MB。服务端下载前校验实时权限，文件路径不出现在 API 响应中。科主任读本科室当前主责患者；会诊只在未过期、未撤销的授权范围内生效。
 
@@ -85,6 +86,8 @@ cd ..\frontend
 npm run build
 npm run build:admin
 ```
+
+管理后台的“邮件设置”可配置密码重置邮件通道。推荐使用邮箱服务商提供的 SMTP 授权码，不要填写邮箱网页登录密码。授权码经 HKDF-SHA256 派生的独立密钥和 AES-256-GCM 加密后保存；派生源为 `LUNGTIC_RECORD_KEYS_JSON` 中当前主密钥。更换主密钥时，在删除旧密钥前重新保存一次 SMTP 授权码。
 
 本分支已做患者/检查/切片/TICI/AI 结果的对象级权限检查、附件认证加密与哈希校验、受控上传下载、科室与会诊授权、基础审计、用户隔离的系统信箱及前端入口。信箱消息最多保留每位用户最近 200 条，正文不写入患者编码、诊断或文件名。下一阶段仍需：异步与可续传的大文件处理、文件版本和更正流程、请求关联 ID、备份恢复演练、登录与上传限流、恶意文件扫描、前端令牌存储改造、机构身份集成及生产环境安全审查。当前实现不应直接用于真实患者数据的公开互联网部署。
 

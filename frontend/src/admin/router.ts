@@ -14,6 +14,7 @@ const router = createRouter({
         { path: "/users", name: "Users", component: () => import("@/views/UserManagement.vue") },
         { path: "/organization", name: "Organization", component: () => import("./OrganizationPage.vue") },
         { path: "/audit", name: "Audit", component: () => import("./AuditPage.vue") },
+        { path: "/smtp", name: "SmtpSettings", component: () => import("./SmtpSettingsPage.vue") },
       ],
     },
   ],
