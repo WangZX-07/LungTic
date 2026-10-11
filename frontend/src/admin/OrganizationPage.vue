@@ -8,7 +8,7 @@
     <n-tabs type="line" animated>
       <n-tab-pane name="departments" tab="科室成员">
         <n-card title="科室" size="small">
-          <n-space align="center">
+          <n-space align="center" class="compact-form">
             <n-input v-model:value="newDepartment" placeholder="新科室名称" style="width:240px" @keyup.enter="createDepartment" />
             <n-button type="primary" :disabled="!newDepartment.trim()" :loading="saving" @click="createDepartment">创建科室</n-button>
           </n-space>
@@ -33,7 +33,7 @@
       </n-tab-pane>
       <n-tab-pane name="care" tab="诊疗团队">
         <n-card title="选择患者" size="small">
-          <n-space align="center">
+          <n-space align="center" class="compact-form">
             <n-select v-model:value="patientId" filterable :options="patientOptions" placeholder="患者编码" style="width:280px" />
             <n-button v-if="hasMorePatients" @click="loadMorePatients">加载更多患者</n-button>
           </n-space>
@@ -59,7 +59,7 @@
       </n-tab-pane>
       <n-tab-pane name="grants" tab="临时授权">
         <n-card title="选择患者" size="small">
-          <n-space align="center">
+          <n-space align="center" class="compact-form">
             <n-select v-model:value="patientId" filterable :options="patientOptions" placeholder="患者编码" style="width:280px" />
             <n-button v-if="hasMorePatients" @click="loadMorePatients">加载更多患者</n-button>
           </n-space>
@@ -220,4 +220,19 @@ table { border-collapse:collapse; width:100%; min-width:600px; font-size:13px; b
 th,td { padding:11px 12px; text-align:left; border-bottom:1px solid #e2e8f0; }
 th { background:#f8fafc; color:#475569; font-weight:600; }
 .empty { text-align:center; color:#64748b; padding:24px; }
+@media (max-width: 640px) {
+  .page-heading { align-items: flex-start; }
+  .page-heading > div { min-width: 0; }
+  .compact-form, .form-row { width: 100%; flex-direction: column; align-items: stretch !important; }
+  .compact-form :deep(.n-input), .compact-form :deep(.n-select),
+  .form-row :deep(.n-input), .form-row :deep(.n-select), .form-row :deep(.n-input-number) {
+    width: 100% !important;
+  }
+  .selection { align-items: stretch; flex-direction: column; gap: 8px; }
+  .selection :deep(.n-select) { width: 100% !important; }
+  .table-wrap { max-width: calc(100vw - 50px); overscroll-behavior-x: contain; }
+}
+@media (pointer: coarse) {
+  .org-page :deep(.n-button) { min-height: 44px; }
+}
 </style>

@@ -49,8 +49,9 @@ onMounted(refresh);
 </script>
 
 <style scoped>
-.text-captcha { width: 100%; }
-.captcha-row { display: flex; gap: 8px; align-items: stretch; }
+.text-captcha { width: 100%; min-width: 0; }
+.captcha-row { display: flex; gap: 8px; align-items: stretch; min-width: 0; }
+.captcha-row :deep(.n-input) { min-width: 0 !important; }
 .captcha-img-wrapper {
   width: 120px; height: 42px; border-radius: 4px; overflow: hidden;
   cursor: pointer; display: flex; align-items: center; justify-content: center;
@@ -60,4 +61,10 @@ onMounted(refresh);
 .captcha-img-wrapper:hover, .captcha-img-wrapper:focus-visible { border-color: #1E88E5; outline: 2px solid #1E88E5; outline-offset: 2px; }
 .captcha-error { color: #334155; font-size: 11px; line-height: 1.2; }
 .captcha-img { width: 100%; height: 100%; object-fit: cover; }
+@media (max-width: 360px) {
+  .captcha-img-wrapper { width: 108px; }
+}
+@media (pointer: coarse) {
+  .captcha-img-wrapper { min-height: 44px; }
+}
 </style>

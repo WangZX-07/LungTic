@@ -169,6 +169,12 @@ onMounted(loadSettings);
 @media (max-width: 700px) {
   .form-grid { grid-template-columns: 1fr; }
   .form-grid > div:empty { display: none; }
+  .page-heading { align-items: flex-start; }
+  .actions { align-items: stretch; flex-direction: column; }
+  .actions :deep(.n-button) { width: 100%; }
   .test-row { grid-template-columns: 1fr; }
+}
+@media (pointer: coarse) {
+  .smtp-page :deep(.n-button), .smtp-page :deep(.n-switch) { min-height: 44px; }
 }
 </style>

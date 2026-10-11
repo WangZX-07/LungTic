@@ -1,20 +1,20 @@
 <template>
   <div class="user-management">
-    <n-space justify="space-between" align="center" style="margin-bottom:24px">
+    <div class="page-heading">
       <h2 style="font-size:20px">用户管理</h2>
-      <n-space>
+      <div class="page-actions">
         <n-button type="primary" @click="openAddModal">
           <template #icon><n-icon><PersonAddOutline /></n-icon></template>
           添加用户
         </n-button>
-        <n-upload accept=".csv" :show-file-list="false" :custom-request="handleCsvUpload">
+        <n-upload class="batch-upload" accept=".csv" :show-file-list="false" :custom-request="handleCsvUpload">
           <n-button>
             <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
             批量导入 CSV
           </n-button>
         </n-upload>
-      </n-space>
-    </n-space>
+      </div>
+    </div>
 
     <n-card size="small" style="margin-bottom:16px">
       <n-space align="center">
@@ -32,12 +32,13 @@
         :bordered="false"
         :single-line="false"
         striped
+        :scroll-x="1100"
         class="users-table"
       />
     </n-spin>
 
     <!-- Add user modal -->
-    <n-modal v-model:show="showAddModal" preset="card" title="添加用户" style="width:480px">
+    <n-modal v-model:show="showAddModal" preset="card" title="添加用户" style="width:min(480px, calc(100vw - 24px))">
       <n-form ref="addFormRef" :model="addForm" :rules="addRules" label-placement="left" label-width="80">
         <n-form-item path="username" label="用户名">
           <n-input v-model:value="addForm.username" placeholder="登录用户名" />
@@ -65,7 +66,7 @@
     </n-modal>
 
     <!-- Edit user modal -->
-    <n-modal v-model:show="showEditModal" preset="card" title="编辑用户" style="width:480px">
+    <n-modal v-model:show="showEditModal" preset="card" title="编辑用户" style="width:min(480px, calc(100vw - 24px))">
       <n-form v-if="editingUser" :model="editForm" label-placement="left" label-width="80">
         <n-form-item label="用户名">
           <n-input :value="editingUser.username" disabled />
@@ -90,7 +91,7 @@
     </n-modal>
 
     <!-- Batch result modal -->
-    <n-modal v-model:show="showBatchResult" preset="card" title="导入结果" style="width:560px">
+    <n-modal v-model:show="showBatchResult" preset="card" title="导入结果" style="width:min(560px, calc(100vw - 24px))">
       <div v-if="batchResult">
         <p>成功创建 <b>{{ batchResult.created }}</b> 个用户</p>
         <div v-if="batchResult.errors.length > 0" style="margin-top:12px">
@@ -278,8 +279,20 @@ onMounted(fetchUsers);
 
 <style scoped>
 .user-management { max-width: 1100px; }
+.page-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
+.page-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .users-table { background: #FFFFFF; border-radius: 8px; border: 1px solid #E2E8F0; }
 .users-table :deep(.n-data-table-th) { background: #F8FAFC; font-weight: 600; }
 .error-list { max-height: 200px; overflow-y: auto; font-size: 12px; color: #EF4444; padding-left: 20px; }
 .error-list li { margin-bottom: 2px; }
+@media (max-width: 640px) {
+  .page-heading { align-items: flex-start; flex-direction: column; margin-bottom: 16px; }
+  .page-actions { width: 100%; }
+  .page-actions > :deep(.n-button), .batch-upload { flex: 1 1 140px; }
+  .batch-upload :deep(.n-upload-trigger), .batch-upload :deep(.n-button) { width: 100%; }
+  .users-table { max-width: calc(100vw - 24px); }
+}
+@media (pointer: coarse) {
+  .page-actions :deep(.n-button), .users-table :deep(.n-button) { min-height: 44px; }
+}
 </style>

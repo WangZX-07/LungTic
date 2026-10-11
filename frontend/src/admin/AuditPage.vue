@@ -2,7 +2,7 @@
   <div class="audit-page">
     <div class="heading"><div><h1>访问审计</h1><p>查看最近的访问、授权和完整性校验事件。</p></div><n-button :loading="loading" @click="load">刷新</n-button></div>
     <n-card size="small">
-      <n-space align="center">
+      <n-space align="center" class="filter-row">
         <n-input-number v-model:value="patientId" :min="1" clearable placeholder="患者 ID（可选）" style="width:180px" />
         <n-button type="primary" @click="load">筛选</n-button>
         <span class="hint">最多显示最近 100 条</span>
@@ -53,4 +53,13 @@ table { border-collapse:collapse; width:100%; min-width:850px; font-size:13px; }
 th,td { padding:11px 12px; text-align:left; border-bottom:1px solid #e2e8f0; }
 th { background:#f8fafc; color:#475569; font-weight:600; }
 .empty { text-align:center; color:#64748b; padding:24px; }
+@media (max-width: 640px) {
+  .heading { align-items: flex-start; gap: 12px; }
+  .filter-row { width: 100%; align-items: stretch !important; flex-direction: column; }
+  .filter-row :deep(.n-input-number) { width: 100% !important; }
+  .table-wrap { max-width: calc(100vw - 50px); overscroll-behavior-x: contain; }
+}
+@media (pointer: coarse) {
+  .audit-page :deep(.n-button) { min-height: 44px; }
+}
 </style>
