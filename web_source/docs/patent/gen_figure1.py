@@ -3,14 +3,13 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 from matplotlib.patches import FancyBboxPatch
-import os
+from pathlib import Path
 
 # Set Chinese font
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Noto Sans SC"]
 plt.rcParams["axes.unicode_minus"] = False
 
-out_dir = r"H:\中国国际大学生创新创业计划\ui\docs\patent"
-os.makedirs(out_dir, exist_ok=True)
+out_dir = Path(__file__).resolve().parent
 
 fig, ax = plt.subplots(1, 1, figsize=(16, 20))
 ax.set_xlim(0, 16)
@@ -163,7 +162,7 @@ for i, line in enumerate(lines_legend):
             fontfamily="monospace", color="#546E7A")
 
 plt.tight_layout()
-out1 = os.path.join(out_dir, "figure1_hierarchy.png")
+out1 = out_dir / "figure1_hierarchy.png"
 fig.savefig(out1, dpi=200, bbox_inches="tight", facecolor="white", edgecolor="none")
 plt.close()
 print(f"Figure 1 saved: {out1}")

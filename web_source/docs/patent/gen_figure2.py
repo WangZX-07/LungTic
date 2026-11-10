@@ -2,14 +2,13 @@
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch
-import os
+from pathlib import Path
 
 # Set Chinese font
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Noto Sans SC"]
 plt.rcParams["axes.unicode_minus"] = False
 
-out_dir = r"H:\中国国际大学生创新创业计划\ui\docs\patent"
-os.makedirs(out_dir, exist_ok=True)
+out_dir = Path(__file__).resolve().parent
 
 fig, ax = plt.subplots(1, 1, figsize=(14, 16))
 ax.set_xlim(0, 14)
@@ -138,7 +137,7 @@ ax.text(7, -5.5, "Download / Exchange / Archive", ha="center", fontsize=8,
         fontfamily="monospace", color="#546E7A")
 
 plt.tight_layout()
-out2 = os.path.join(out_dir, "figure2_pipeline.png")
+out2 = out_dir / "figure2_pipeline.png"
 fig.savefig(out2, dpi=200, bbox_inches="tight", facecolor="white", edgecolor="none")
 plt.close()
 print(f"Figure 2 saved: {out2}")

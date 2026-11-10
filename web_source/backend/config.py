@@ -1,9 +1,7 @@
 ﻿import os
 
-DATABASE_URL = os.getenv(
-    "LUNGTIC_DB_URL",
-    "mysql+pymysql://root:admin123@localhost:3306/lungtic"
-)
+_DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), "lungtic-dev.sqlite").replace("\\", "/")
+DATABASE_URL = os.getenv("LUNGTIC_DB_URL", f"sqlite:///{_DEFAULT_DB_PATH}")
 
 JWT_SECRET = os.getenv("LUNGTIC_JWT_SECRET", "lungtic-dev-secret-change-in-prod")
 JWT_ALGORITHM = "HS256"

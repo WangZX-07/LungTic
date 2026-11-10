@@ -1,21 +1,17 @@
-# Node (CodexBridge)
-backend/wx/
-backend/wx/node_modules/
-backend/wx/dist/
-backend/wx/.codexbridge/
-backend/wx/.env
+# Optional local integrations
+web_source/backend/wx/
 
 # Frontend build output and dependencies
-frontend/node_modules/
-frontend/dist/
-frontend/dist-admin/
-frontend/release-client/
-frontend/release/
-frontend/.vite/
+web_source/frontend/node_modules/
+web_source/frontend/dist/
+web_source/frontend/dist-admin/
+web_source/frontend/release-client/
+web_source/frontend/release/
+web_source/frontend/.vite/
 
 # Packaged artifacts
-backend-dist/
-build/
+web_source/backend-dist/
+web_source/build/
 
 # Python
 __pycache__/
@@ -26,11 +22,12 @@ __pycache__/
 # IDE
 .idea/
 .superpowers/
+web_source/.local-git-backups/
 
 # Local configuration and credentials
 .env
 .env.*
-!frontend/.env.standalone
+!web_source/frontend/.env.standalone
 *.pem
 *.key
 *.pfx
@@ -48,4 +45,6 @@ server.env.ps1
 *.db
 *.pth
 *.pt
-backend/data/
+web_source/backend/data/
+web_source/backend/.local-data/
+web_source/backend/lungtic-dev.sqlite
