@@ -240,3 +240,6 @@ CREATE TABLE IF NOT EXISTS smtp_settings (
     updated_by_user_id INT NULL,
     FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
+
+-- Project portal tables are maintained in the idempotent Phase 7 migration.
+SOURCE database/migrations/phase7_project_portal.sql;

@@ -1,15 +1,16 @@
 # LungTic 项目交接文档
 
-更新时间：2026-11-10
-维护分支：`feat/clinical-records-server`
+更新时间：2026-11-11
+维护分支：`feat/project-progress-portal`
 
 ## 1. 交付范围
 
-本交付包含三个面向不同使用者的入口：
+本交付包含四个面向不同使用者的入口：
 
 1. 临床桌面客户端：仅医生和患者登录，Electron 封装，内置生产 API 地址与 TLS 公钥固定值。
 2. 浏览器管理后台：管理员独立登录，用于组织、用户、审计和 SMTP 配置。
 3. 中心服务：FastAPI + SQLAlchemy，负责认证、权限、病例、影像、通知、审计和加密存储。
+4. 项目进度门户：飞书身份登录，只管理 LungTic 项目的里程碑、任务、进度、风险和 GitHub 动态；与临床身份完全隔离。
 
 另包含单机 TICI 查看器、`.tici` 工具、数据库脚本、设计说明和专利材料。
 
@@ -20,6 +21,7 @@
                                                   ├─ Nginx ─ FastAPI ─ MySQL
 管理员浏览器后台 ─────────── HTTPS ─────────────┘                │
                                                                     └─ 受控病例文件目录
+飞书项目门户 ─────────────── HTTPS ─ Nginx ─ FastAPI ─ MySQL(project_* 表)
 ```
 
 推荐将 API 仅监听 `127.0.0.1:8000`，由 Nginx 暴露 HTTPS。管理后台为静态文件，由独立域名托管并将 `/api` 反代到 API。服务端生产进程使用单 worker 起步，避免模型与影像库在多进程中重复占用内存。
@@ -57,6 +59,7 @@
 4. `phase4_record_encryption.sql`
 5. `phase5_internal_notifications.sql`
 6. `phase6_smtp_settings.sql`
+7. `phase7_project_portal.sql`
 
 执行前备份，执行后检查 `departments`、`department_memberships`、`patient_care_assignments`、`access_grants`、`clinical_records`、`audit_events`、`notifications` 和 `smtp_settings`。中央服务管理员使用 `backend/bootstrap_admin.py` 创建，不存在生产默认密码。
 
@@ -96,6 +99,7 @@ python -m pytest tests -q
 cd ..\frontend
 npm run build
 npm run build:admin
+npm run build:project
 node --test electron/connection.test.js
 ```
 

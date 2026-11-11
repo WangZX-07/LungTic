@@ -36,3 +36,22 @@ SMTP_FROM = os.getenv("LUNGTIC_SMTP_FROM", SMTP_USERNAME)
 CAPTCHA_SECRET = os.getenv("LUNGTIC_CAPTCHA_SECRET", "lungtic-captcha-secret")
 CAPTCHA_EXPIRE_SECONDS = 300
 CAPTCHA_TOLERANCE = 5
+
+# Standalone project progress portal.  Values are injected on the server and
+# must never be compiled into the browser bundle.
+PROJECT_ORIGIN = os.getenv("LUNGTIC_PROJECT_ORIGIN", "http://127.0.0.1:5175").rstrip("/")
+PROJECT_COOKIE_SECURE = os.getenv(
+    "LUNGTIC_PROJECT_COOKIE_SECURE",
+    "1" if PROJECT_ORIGIN.startswith("https://") else "0",
+) == "1"
+FEISHU_APP_ID = os.getenv("LUNGTIC_FEISHU_APP_ID", "").strip()
+FEISHU_APP_SECRET = os.getenv("LUNGTIC_FEISHU_APP_SECRET", "").strip()
+FEISHU_REDIRECT_URI = os.getenv(
+    "LUNGTIC_FEISHU_REDIRECT_URI",
+    PROJECT_ORIGIN + "/api/project/auth/callback",
+).strip()
+PROJECT_BOOTSTRAP_OPEN_IDS = {
+    value.strip() for value in os.getenv("LUNGTIC_PROJECT_BOOTSTRAP_OPEN_IDS", "").split(",") if value.strip()
+}
+GITHUB_WEBHOOK_SECRET = os.getenv("LUNGTIC_GITHUB_WEBHOOK_SECRET", "").strip()
+GITHUB_REPOSITORY = os.getenv("LUNGTIC_GITHUB_REPOSITORY", "WangZX-07/LungTic").strip()

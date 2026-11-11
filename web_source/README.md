@@ -7,7 +7,7 @@
 | 模块 | 目录 | 说明 |
 |---|---|---|
 | 中心服务 | `backend/` | FastAPI、权限控制、病例加密、审计、通知、SMTP 配置与 AI/影像接口 |
-| 临床客户端与管理后台 | `frontend/` | Vue 3；Electron 桌面客户端和独立浏览器管理后台 |
+| 临床客户端、管理后台与项目门户 | `frontend/` | Vue 3；Electron 桌面客户端、独立浏览器管理后台、飞书项目进度门户 |
 | 数据库 | `database/` | MySQL 全量建库脚本和增量迁移 |
 | TICI 工具 | `tici/` | `.tici` 文件读写与转换 |
 | 设计与部署文档 | `docs/` | 客户端/后台拆分、服务部署、专利和设计资料 |
@@ -73,6 +73,15 @@ npm run dev:admin
 
 管理后台开发页为 `http://127.0.0.1:5174`。两个端口呈现不同入口；若两者看起来相同，应确认使用了 `npm run dev:admin`，并清理旧的 Vite 进程。
 
+项目进度门户使用第三个终端启动：
+
+```powershell
+cd frontend
+npm run dev:project
+```
+
+项目门户开发页为 `http://127.0.0.1:5175`，采用独立飞书身份和 `project_*` 数据表，不复用临床账号。
+
 ## MySQL 初始化与迁移
 
 全新数据库直接执行：
@@ -90,6 +99,7 @@ database/migrations/phase3.sql
 database/migrations/phase4_record_encryption.sql
 database/migrations/phase5_internal_notifications.sql
 database/migrations/phase6_smtp_settings.sql
+database/migrations/phase7_project_portal.sql
 ```
 
 生产连接通过 `LUNGTIC_DB_URL` 注入，例如 `mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/lungtic`。真实密码只写入服务器的受限环境文件，不写入源码、命令历史或安装包。
@@ -100,6 +110,7 @@ database/migrations/phase6_smtp_settings.sql
 cd frontend
 npm run build
 npm run build:admin
+npm run build:project
 node --test electron/connection.test.js
 
 cd ..\backend
@@ -120,8 +131,9 @@ npm run package:viewer
 
 - 中心服务部署：[docs/CLINICAL_SERVER.md](docs/CLINICAL_SERVER.md)
 - 客户端与管理后台拆分：[docs/CLIENT_ADMIN_SPLIT.md](docs/CLIENT_ADMIN_SPLIT.md)
+- 飞书项目进度门户：[docs/PROJECT_PORTAL.md](docs/PROJECT_PORTAL.md)
 - TICI 查看器：[docs/TICI_VIEWER.md](docs/TICI_VIEWER.md)
-- 当前生产域名：临床 API `https://clinical.respulse.top`，管理后台 `https://admin.respulse.top`
+- 当前生产域名：临床 API `https://clinical.respulse.top`，管理后台 `https://admin.respulse.top`；项目门户建议使用 `https://project.respulse.top`
 
 桌面客户端内置 HTTPS 地址和服务器公钥 SHA-256 固定值。TLS 公钥发生变化时，必须重新计算固定值并发布客户端更新，或在客户端设置中重新配置。不要把服务器私钥或共享 API 密钥打进客户端。
 

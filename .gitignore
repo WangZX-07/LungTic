@@ -5,6 +5,7 @@ web_source/backend/wx/
 web_source/frontend/node_modules/
 web_source/frontend/dist/
 web_source/frontend/dist-admin/
+web_source/frontend/dist-project/
 web_source/frontend/release-client/
 web_source/frontend/release/
 web_source/frontend/.vite/
