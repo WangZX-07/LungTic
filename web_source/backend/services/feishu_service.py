@@ -127,7 +127,13 @@ def exchange_code(code: str) -> FeishuIdentity:
             tenant_token = _tenant_access_token(client)
             contact_response = client.get(
                 f"{FEISHU_API}/contact/v3/users/{open_id}",
-                params={"user_id_type": "open_id"},
+                params={
+                    "user_id_type": "open_id",
+                    # Keep IDs stable and unambiguous for role rules.  Feishu
+                    # open_department_id values are tenant-wide and start with
+                    # ``od-``; never rely on an API default here.
+                    "department_id_type": "open_department_id",
+                },
                 headers={"Authorization": "Bearer " + tenant_token},
             )
             contact_response.raise_for_status()

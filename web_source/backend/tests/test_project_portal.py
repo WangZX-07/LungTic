@@ -90,6 +90,20 @@ def test_department_and_title_rules_use_priority(portal):
         assert map_member_role(db, ["od-other"], None, "技术负责人") == "unassigned"
 
 
+def test_role_rule_rejects_wrong_department_id_field(portal):
+    client, _, credentials = portal
+    wrong_department = request_as(
+        client, credentials, "admin", "post", "/api/project/admin/role-rules",
+        json={"name": "wrong", "department_id": "0", "role": "contributor"},
+    )
+    assert wrong_department.status_code == 422
+    department_in_title = request_as(
+        client, credentials, "admin", "post", "/api/project/admin/role-rules",
+        json={"name": "wrong field", "job_title_id": "od-rd", "role": "contributor"},
+    )
+    assert department_in_title.status_code == 422
+
+
 def test_project_sessions_csrf_and_task_scope(portal):
     client, _, credentials = portal
     assert client.get("/api/project/dashboard").status_code == 401

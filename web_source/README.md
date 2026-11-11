@@ -132,6 +132,7 @@ npm run package:viewer
 - 中心服务部署：[docs/CLINICAL_SERVER.md](docs/CLINICAL_SERVER.md)
 - 客户端与管理后台拆分：[docs/CLIENT_ADMIN_SPLIT.md](docs/CLIENT_ADMIN_SPLIT.md)
 - 飞书项目进度门户：[docs/PROJECT_PORTAL.md](docs/PROJECT_PORTAL.md)
+- 项目门户中文使用手册：[docs/PROJECT_PORTAL_USER_GUIDE.md](docs/PROJECT_PORTAL_USER_GUIDE.md)
 - TICI 查看器：[docs/TICI_VIEWER.md](docs/TICI_VIEWER.md)
 - 当前生产域名：临床 API `https://clinical.respulse.top`，管理后台 `https://admin.respulse.top`；项目门户建议使用 `https://project.respulse.top`
 

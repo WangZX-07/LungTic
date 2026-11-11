@@ -43,7 +43,7 @@ import { useRoute, useRouter } from "vue-router";
 import { NAvatar, NButton, NIcon, NSpace, NTag } from "naive-ui";
 import {
   AnalyticsOutline, AlertCircleOutline, CheckmarkDoneOutline, GitBranchOutline,
-  HomeOutline, PersonCircleOutline, SettingsOutline,
+  HelpCircleOutline, HomeOutline, PersonCircleOutline, SettingsOutline,
 } from "@vicons/ionicons5";
 import IcpFooter from "@/components/IcpFooter.vue";
 import { useProjectStore } from "./store";
@@ -61,12 +61,13 @@ const desktopNav = computed(() => [
   ...baseNav,
   { to: "/risks", label: "风险与决策", icon: AlertCircleOutline },
   { to: "/profile", label: "我的", icon: PersonCircleOutline },
+  { to: "/help", label: "使用帮助", icon: HelpCircleOutline },
   ...(store.isAdmin ? [{ to: "/admin", label: "项目设置", icon: SettingsOutline }] : []),
 ]);
 const mobileNav = [...baseNav, { to: "/profile", label: "我的", icon: PersonCircleOutline }];
 const titles: Record<string, string> = {
   "/overview": "项目总览", "/tasks": "任务与里程碑", "/progress": "进度填报",
-  "/activity": "GitHub 动态", "/risks": "风险与决策", "/profile": "我的项目页", "/admin": "项目设置",
+  "/activity": "GitHub 动态", "/risks": "风险与决策", "/profile": "我的项目页", "/help": "使用帮助", "/admin": "项目设置",
 };
 const roleLabels: Record<string, string> = {
   project_admin: "项目管理员", project_lead: "项目负责人", team_lead: "小组负责人",

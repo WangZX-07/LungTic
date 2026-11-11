@@ -24,7 +24,15 @@
       <div v-if="!members.length && !loading" class="empty-state"><div><strong>还没有成员登录</strong>成员首次通过飞书登录后会出现在这里。</div></div>
       <div v-for="member in members" :key="member.id" class="member-row list-row">
         <n-avatar round :size="36" :src="member.avatar_url || undefined">{{ member.name.slice(0, 1) }}</n-avatar>
-        <div class="member-identity"><strong>{{ member.name }}</strong><span>{{ member.job_title_name || "职位未同步" }} · 自动角色 {{ roleLabel(member.mapped_role) }}</span></div>
+        <div class="member-identity">
+          <strong>{{ member.name }}</strong>
+          <span>{{ positionSummary(member) }} · 自动角色 {{ roleLabel(member.mapped_role) }}</span>
+          <div v-if="member.department_ids.length" class="member-departments">
+            <code v-for="departmentId in member.department_ids" :key="departmentId">{{ departmentId }}</code>
+            <n-button size="tiny" text type="primary" @click="copyDepartmentIds(member)">复制部门 ID</n-button>
+          </div>
+          <span v-else class="sync-warning">部门也未同步：请检查通讯录权限、应用可用范围，并让成员重新登录</span>
+        </div>
         <n-select :value="member.manual_role || null" clearable placeholder="使用自动映射" :options="roleOptions" style="width: 150px" @update:value="(value) => updateMember(member.id, { manual_role: value })" />
         <n-input v-model:value="draftGithub[member.id]" placeholder="GitHub 登录名" style="width: 170px" @keyup.enter="saveGithub(member.id)" />
         <n-button size="small" :loading="savingMember === member.id" @click="saveGithub(member.id)">保存</n-button>
@@ -36,13 +44,13 @@
       <n-form label-placement="top">
         <n-form-item label="规则名称" required><n-input v-model:value="ruleForm.name" maxlength="128" placeholder="例如：研发部项目成员" /></n-form-item>
         <div class="form-grid">
-          <n-form-item label="飞书部门 ID"><n-input v-model:value="ruleForm.department_id" placeholder="od-... 或自定义 department_id" /></n-form-item>
-          <n-form-item label="飞书职位 ID"><n-input v-model:value="ruleForm.job_title_id" placeholder="职位 ID（优先）" /></n-form-item>
+          <n-form-item label="飞书部门 open_department_id"><n-input v-model:value="ruleForm.department_id" placeholder="od-...（从成员列表复制）" /></n-form-item>
+          <n-form-item label="飞书职位 ID"><n-input v-model:value="ruleForm.job_title_id" placeholder="职位 ID，不能填写 od-..." /></n-form-item>
           <n-form-item label="职位名称"><n-input v-model:value="ruleForm.job_title_name" placeholder="无职位 ID 时可按完整名称匹配" /></n-form-item>
           <n-form-item label="项目角色"><n-select v-model:value="ruleForm.role" :options="roleOptions" /></n-form-item>
           <n-form-item label="优先级"><n-input-number v-model:value="ruleForm.priority" :min="-100000" :max="100000" style="width: 100%" /></n-form-item>
         </div>
-        <n-alert type="info" :bordered="false">至少填写部门 ID、职位 ID 或职位名称之一。使用稳定 ID 比名称更可靠。</n-alert>
+        <n-alert type="info" :bordered="false">至少填写一个匹配条件。部门 ID 必须是本页成员信息中的 od-...；同一规则填写多个条件时，成员必须同时满足。</n-alert>
         <n-space justify="end" style="margin-top: 18px"><n-button @click="showRule = false">取消</n-button><n-button type="primary" :loading="saving" :disabled="!ruleForm.name.trim()" @click="createRule">保存规则</n-button></n-space>
       </n-form>
     </n-modal>
@@ -63,6 +71,7 @@ const roleOptions = [
 ];
 const ruleForm = ref({ name: "", department_id: "", job_title_id: "", job_title_name: "", role: "contributor", priority: 100, active: true });
 const roleLabel = (value: string) => ({ project_admin: "项目管理员", project_lead: "项目负责人", team_lead: "小组负责人", contributor: "项目成员", observer: "观察者", unassigned: "未分配" } as Record<string,string>)[value] || value;
+const positionSummary = (member: ProjectMember) => member.job_title_name || member.job_title_id || (member.department_ids.length ? "飞书资料未填写职位" : "职位未同步");
 async function load() {
   loading.value = true; message.value = "";
   try {
@@ -73,9 +82,15 @@ async function load() {
   finally { loading.value = false; }
 }
 async function createRule() {
+  const departmentId = ruleForm.value.department_id.trim();
+  const jobTitleId = ruleForm.value.job_title_id.trim();
+  const jobTitleName = ruleForm.value.job_title_name.trim();
+  if (!departmentId && !jobTitleId && !jobTitleName) { messageType.value = "error"; message.value = "至少填写部门 ID、职位 ID 或职位名称之一。"; return; }
+  if (departmentId && !departmentId.startsWith("od-")) { messageType.value = "error"; message.value = "部门 ID 应是以 od- 开头的 open_department_id。"; return; }
+  if (jobTitleId.startsWith("od-")) { messageType.value = "error"; message.value = "od-... 是部门 ID，请填写到左侧的部门字段。"; return; }
   saving.value = true; message.value = "";
   try {
-    await api.post("/admin/role-rules", { ...ruleForm.value, department_id: ruleForm.value.department_id || null, job_title_id: ruleForm.value.job_title_id || null, job_title_name: ruleForm.value.job_title_name || null });
+    await api.post("/admin/role-rules", { ...ruleForm.value, department_id: departmentId || null, job_title_id: jobTitleId || null, job_title_name: jobTitleName || null });
     showRule.value = false; ruleForm.value = { name: "", department_id: "", job_title_id: "", job_title_name: "", role: "contributor", priority: 100, active: true };
     messageType.value = "success"; message.value = "映射规则已创建。"; await load();
   } catch (reason) { messageType.value = "error"; message.value = errorMessage(reason, "规则保存失败"); }
@@ -89,6 +104,14 @@ async function updateMember(id: number, patch: Record<string, unknown>) {
   finally { savingMember.value = null; }
 }
 async function saveGithub(id: number) { await updateMember(id, { github_login: draftGithub[id] || null }); }
+async function copyDepartmentIds(member: ProjectMember) {
+  try {
+    await navigator.clipboard.writeText(member.department_ids.join("\n"));
+    messageType.value = "success"; message.value = `${member.name} 的部门 ID 已复制。`;
+  } catch {
+    messageType.value = "error"; message.value = "浏览器未允许复制，请手动选中部门 ID。";
+  }
+}
 onMounted(load);
 </script>
 <style scoped>
@@ -98,6 +121,9 @@ onMounted(load);
 .member-identity { min-width: 180px; flex: 1; display: flex; flex-direction: column; }
 .member-identity strong { color: #1e293b; font-size: 13px; }
 .member-identity span { color: #64748b; font-size: 11px; }
+.member-departments { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.member-departments code { max-width: 290px; padding: 2px 6px; border-radius: 4px; background: #f1f5f9; color: #334155; font-size: 11px; overflow-wrap: anywhere; }
+.member-identity .sync-warning { color: #b45309; margin-top: 3px; }
 .rule-modal { width: min(650px, calc(100vw - 24px)); }
 @media (max-width: 900px) { .integration-strip { grid-template-columns: 1fr 1fr; } .integration-wide { grid-column: 1 / -1; border-left: 0 !important; border-top: 1px solid var(--color-border); } .member-row { flex-wrap: wrap; } .member-identity { min-width: calc(100% - 54px); } .member-row > .n-select, .member-row > .n-input { flex: 1; width: auto !important; min-width: 140px; } }
 @media (max-width: 520px) { .integration-strip { grid-template-columns: 1fr; } .integration-strip .metric-item { border-left: 0; border-top: 1px solid var(--color-border); } .integration-strip .metric-item:first-child { border-top: 0; } .integration-wide { grid-column: auto; } .member-row > .n-select, .member-row > .n-input, .member-row > .n-button { width: 100% !important; } }

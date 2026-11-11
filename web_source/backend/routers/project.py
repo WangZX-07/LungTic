@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from config import (
@@ -179,6 +179,34 @@ class RoleRuleInput(BaseModel):
     role: str
     priority: int = Field(default=100, ge=-100000, le=100000)
     active: bool = True
+
+    @field_validator("department_id", "job_title_id", "job_title_name", mode="before")
+    @classmethod
+    def normalize_optional_rule_value(cls, value):
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    @field_validator("department_id")
+    @classmethod
+    def validate_open_department_id(cls, value: str | None):
+        if value is not None and not value.startswith("od-"):
+            raise ValueError("飞书部门 ID 必须是以 od- 开头的 open_department_id")
+        return value
+
+    @field_validator("job_title_id")
+    @classmethod
+    def reject_department_id_as_job_title(cls, value: str | None):
+        if value is not None and value.startswith("od-"):
+            raise ValueError("不能把以 od- 开头的部门 ID 填入职位 ID")
+        return value
+
+    @model_validator(mode="after")
+    def require_mapping_condition(self):
+        if not any([self.department_id, self.job_title_id, self.job_title_name]):
+            raise ValueError("至少填写部门 ID、职位 ID 或职位名称之一")
+        return self
 
 
 class MemberAdminPatch(BaseModel):

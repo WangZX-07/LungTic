@@ -2,6 +2,8 @@
 
 项目门户是独立站点，建议域名为 `https://project.respulse.top`。它只管理 LungTic 项目的里程碑、任务、人工进度、风险和 GitHub 动态，不复用临床账号，也不能读取病例数据。
 
+部署完成后的部门 ID、职位同步、角色映射和日常操作见 [PROJECT_PORTAL_USER_GUIDE.md](PROJECT_PORTAL_USER_GUIDE.md)。
+
 ## 1. 访问与权限模型
 
 | 项目角色 | 能力 |

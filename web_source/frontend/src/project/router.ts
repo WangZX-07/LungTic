@@ -16,6 +16,7 @@ const router = createRouter({
         { path: "activity", name: "ProjectActivity", component: () => import("./views/ActivityPage.vue") },
         { path: "risks", name: "ProjectRisks", component: () => import("./views/RisksPage.vue") },
         { path: "profile", name: "ProjectProfile", component: () => import("./views/ProfilePage.vue") },
+        { path: "help", name: "ProjectHelp", component: () => import("./views/HelpPage.vue") },
         { path: "admin", name: "ProjectAdmin", component: () => import("./views/AdminPage.vue"), meta: { admin: true } },
       ],
     },

@@ -7,12 +7,13 @@
     </section>
     <section class="surface profile-fields">
       <dl><dt>飞书部门</dt><dd>{{ member?.department_names?.join("、") || member?.department_ids?.join("、") || "未同步" }}</dd></dl>
-      <dl><dt>飞书职位</dt><dd>{{ member?.job_title_name || member?.job_title_id || "未同步" }}</dd></dl>
+      <dl><dt>飞书职位</dt><dd>{{ jobTitleDisplay }}</dd></dl>
       <dl><dt>GitHub 账号</dt><dd>{{ member?.github_login || "尚未绑定" }}</dd></dl>
       <dl><dt>权限来源</dt><dd>{{ member?.manual_role ? "管理员手动设置" : "飞书部门/职位自动映射" }}</dd></dl>
     </section>
     <section class="surface quick-links">
       <RouterLink to="/risks"><span><strong>风险与决策</strong><small>查看或登记项目风险</small></span><n-icon><ChevronForwardOutline /></n-icon></RouterLink>
+      <RouterLink to="/help"><span><strong>使用帮助</strong><small>部门 ID、职位同步、角色规则与 GitHub 排查</small></span><n-icon><ChevronForwardOutline /></n-icon></RouterLink>
       <RouterLink v-if="store.isAdmin" to="/admin"><span><strong>项目设置</strong><small>角色映射、成员与集成状态</small></span><n-icon><ChevronForwardOutline /></n-icon></RouterLink>
     </section>
   </div>
@@ -25,6 +26,7 @@ import { useProjectStore } from "../store";
 const store = useProjectStore(); const member = computed(() => store.member);
 const labels: Record<string,string> = { project_admin: "项目管理员", project_lead: "项目负责人", team_lead: "小组负责人", contributor: "项目成员", observer: "观察者" };
 const roleLabel = computed(() => labels[member.value?.role || ""] || "未分配");
+const jobTitleDisplay = computed(() => member.value?.job_title_name || member.value?.job_title_id || (member.value?.department_ids?.length ? "飞书资料未填写职位" : "组织信息未同步"));
 </script>
 <style scoped>
 .profile-panel { padding: 24px; display: flex; align-items: center; gap: 16px; }
