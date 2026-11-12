@@ -1,5 +1,5 @@
 <template>
-  <n-modal v-model:show="showModal" :mask-closable="true" preset="card" title="密码重置" style="width: 420px">
+  <n-modal v-model:show="showModal" :mask-closable="true" preset="card" title="密码重置" style="width: min(420px, calc(100vw - 24px)); max-height: calc(100dvh - 24px)">
     <n-steps :current="step" :status="stepStatus" style="margin-bottom: 24px">
       <n-step title="验证邮箱" description="输入注册邮箱" />
       <n-step title="设置密码" description="输入验证码和新密码" />

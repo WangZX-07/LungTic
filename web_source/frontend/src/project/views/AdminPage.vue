@@ -40,7 +40,7 @@
     </section>
     <n-alert v-if="message" :type="messageType" :show-icon="true">{{ message }}</n-alert>
 
-    <n-modal v-model:show="showRule" preset="card" title="新增权限映射规则" class="rule-modal">
+    <n-modal v-model:show="showRule" preset="card" title="新增权限映射规则" class="project-modal project-modal--standard">
       <n-form label-placement="top">
         <n-form-item label="规则名称" required><n-input v-model:value="ruleForm.name" maxlength="128" placeholder="例如：研发部项目成员" /></n-form-item>
         <div class="form-grid">
@@ -124,7 +124,6 @@ onMounted(load);
 .member-departments { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .member-departments code { max-width: 290px; padding: 2px 6px; border-radius: 4px; background: #f1f5f9; color: #334155; font-size: 11px; overflow-wrap: anywhere; }
 .member-identity .sync-warning { color: #b45309; margin-top: 3px; }
-.rule-modal { width: min(650px, calc(100vw - 24px)); }
 @media (max-width: 900px) { .integration-strip { grid-template-columns: 1fr 1fr; } .integration-wide { grid-column: 1 / -1; border-left: 0 !important; border-top: 1px solid var(--color-border); } .member-row { flex-wrap: wrap; } .member-identity { min-width: calc(100% - 54px); } .member-row > .n-select, .member-row > .n-input { flex: 1; width: auto !important; min-width: 140px; } }
 @media (max-width: 520px) { .integration-strip { grid-template-columns: 1fr; } .integration-strip .metric-item { border-left: 0; border-top: 1px solid var(--color-border); } .integration-strip .metric-item:first-child { border-top: 0; } .integration-wide { grid-column: auto; } .member-row > .n-select, .member-row > .n-input, .member-row > .n-button { width: 100% !important; } }
 </style>

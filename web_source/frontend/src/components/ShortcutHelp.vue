@@ -4,7 +4,7 @@
     @update:show="$emit('update:show', $event)"
     preset="card"
     title="键盘快捷键"
-    style="width:480px"
+    style="width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 24px)"
     :mask-closable="true"
   >
     <n-space vertical :size="16">

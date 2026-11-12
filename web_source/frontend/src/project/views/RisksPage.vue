@@ -37,7 +37,7 @@
     </section>
     <n-alert v-if="message" :type="messageType" :show-icon="true">{{ message }}</n-alert>
 
-    <n-modal v-model:show="showCreate" preset="card" title="登记项目风险" class="risk-modal">
+    <n-modal v-model:show="showCreate" preset="card" title="登记项目风险" class="project-modal project-modal--standard">
       <n-form label-placement="top">
         <n-form-item label="风险标题" required><n-input v-model:value="form.title" maxlength="240" /></n-form-item>
         <div class="form-grid">
@@ -50,7 +50,7 @@
       </n-form>
     </n-modal>
 
-    <n-modal v-model:show="showDecision" preset="card" title="记录项目决策" class="risk-modal">
+    <n-modal v-model:show="showDecision" preset="card" title="记录项目决策" class="project-modal project-modal--standard">
       <n-form label-placement="top">
         <n-form-item label="决策标题" required><n-input v-model:value="decisionForm.title" maxlength="240" /></n-form-item>
         <n-form-item label="背景"><n-input v-model:value="decisionForm.context" type="textarea" :rows="2" /></n-form-item>
@@ -113,6 +113,5 @@ onMounted(load);
 .decision-row { align-items: flex-start; }
 .decision-row p { margin-top: 7px; color: #52647b; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
 .decision-result { color: #1e293b !important; }
-.risk-modal { width: min(620px, calc(100vw - 24px)); }
 @media (max-width: 600px) { .risk-row { flex-wrap: wrap; } .risk-row > .n-select { width: 100% !important; } }
 </style>

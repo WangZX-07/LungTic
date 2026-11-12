@@ -47,7 +47,7 @@
     </section>
     <n-alert v-if="error" type="error" :show-icon="true">{{ error }}</n-alert>
 
-    <n-modal v-model:show="showTask" preset="card" title="新建任务" class="form-modal">
+    <n-modal v-model:show="showTask" preset="card" title="新建任务" class="project-modal project-modal--wide">
       <n-form label-placement="top">
         <div class="form-grid">
           <n-form-item class="span-2" label="任务名称" required><n-input v-model:value="taskForm.title" maxlength="240" /></n-form-item>
@@ -64,7 +64,7 @@
       </n-form>
     </n-modal>
 
-    <n-modal v-model:show="showMilestone" preset="card" title="新建里程碑" class="form-modal">
+    <n-modal v-model:show="showMilestone" preset="card" title="新建里程碑" class="project-modal project-modal--wide">
       <n-form label-placement="top">
         <n-form-item label="名称" required><n-input v-model:value="milestoneForm.title" maxlength="200" /></n-form-item>
         <div class="form-grid">
@@ -76,7 +76,7 @@
       </n-form>
     </n-modal>
 
-    <n-modal v-model:show="showUpdate" preset="card" title="更新任务" class="small-modal">
+    <n-modal v-model:show="showUpdate" preset="card" title="更新任务" class="project-modal project-modal--compact">
       <n-form label-placement="top">
         <n-form-item label="状态"><n-select v-model:value="updateForm.status" :options="statusOptions" /></n-form-item>
         <n-form-item label="完成度"><n-input-number v-model:value="updateForm.progress" :min="0" :max="100" :step="5" style="width: 100%"><template #suffix>%</template></n-input-number></n-form-item>
@@ -156,7 +156,5 @@ onMounted(loadAll);
 .filter-panel { padding: 14px 18px; }
 .task-title-line { display: flex; align-items: center; gap: 8px; }
 .task-progress { max-width: 460px; margin-top: 9px; }
-.form-modal { width: min(680px, calc(100vw - 24px)); }
-.small-modal { width: min(440px, calc(100vw - 24px)); }
 @media (max-width: 600px) { .task-row { flex-wrap: wrap; } .task-row > .n-button { width: 100%; } .task-progress { max-width: none; } }
 </style>
