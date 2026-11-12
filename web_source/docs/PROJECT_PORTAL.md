@@ -73,7 +73,10 @@ LUNGTIC_FEISHU_REDIRECT_URI=https://project.respulse.top/api/project/auth/callba
 LUNGTIC_PROJECT_BOOTSTRAP_OPEN_IDS=ou_xxxxxxxxxxxxxxxx
 LUNGTIC_GITHUB_REPOSITORY=WangZX-07/LungTic
 LUNGTIC_GITHUB_WEBHOOK_SECRET=openssl生成的独立随机值
+LUNGTIC_GITHUB_API_TOKEN=可选的只读Fine-grainedToken；私有仓库历史同步必填
 ```
+
+公开仓库同步历史时可以暂不填写 `LUNGTIC_GITHUB_API_TOKEN`，但会受到较低的匿名 API 请求额度限制。私有仓库必须配置只读 Token，至少开放目标仓库 Metadata、Contents、Issues、Pull requests 和 Actions 的读取权限。Token 只放在服务器环境文件，不发送给前端。
 
 同时在原有 `LUNGTIC_CORS_ORIGINS` 中加入 `https://project.respulse.top`。生产环境不得使用 `*`。
 

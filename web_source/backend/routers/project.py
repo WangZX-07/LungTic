@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 import secrets
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response
@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from config import (
     FEISHU_APP_ID,
+    GITHUB_API_TOKEN,
     GITHUB_REPOSITORY,
     GITHUB_WEBHOOK_SECRET,
     PROJECT_BOOTSTRAP_OPEN_IDS,
@@ -35,6 +36,7 @@ from models.project_models import (
     ProjectTask,
 )
 from services.feishu_service import FeishuError, FeishuIdentity, browser_login_url, configured as feishu_configured, exchange_code
+from services.github_service import GithubHistoryError, fetch_github_history
 from services.project_security import (
     CSRF_COOKIE,
     ROLES,
@@ -207,6 +209,11 @@ class RoleRuleInput(BaseModel):
         if not any([self.department_id, self.job_title_id, self.job_title_name]):
             raise ValueError("至少填写部门 ID、职位 ID 或职位名称之一")
         return self
+
+
+class GithubHistorySyncInput(BaseModel):
+    days: int = Field(default=365, ge=1, le=3650)
+    import_tasks: bool = True
 
 
 class MemberAdminPatch(BaseModel):
@@ -417,14 +424,19 @@ def dashboard(
     tasks = db.query(ProjectTask).all()
     total_weight = sum(max(task.weight or 0, 0) for task in tasks)
     weighted = sum(max(task.weight or 0, 0) * (100 if task.status == "done" else task.progress) for task in tasks)
-    project_progress = round(weighted / total_weight) if total_weight else 0
+    project_progress = round(weighted / total_weight) if total_weight else None
     today = date.today()
     open_tasks = [task for task in tasks if task.status != "done"]
     milestones = db.query(ProjectMilestone).order_by(ProjectMilestone.sort_order, ProjectMilestone.id).all()
     recent_updates = db.query(ProjectProgressUpdate).order_by(ProjectProgressUpdate.created_at.desc()).limit(8).all()
     member_names = {row.id: row.name for row in db.query(ProjectMember).all()}
+    github_evidence_count = db.query(ProjectGithubEvent).count()
     return {
-        "project": {"name": "LungTic", "progress": project_progress},
+        "project": {
+            "name": "LungTic", "progress": project_progress,
+            "has_tasks": bool(tasks), "task_count": len(tasks),
+            "github_evidence_count": github_evidence_count,
+        },
         "metrics": {
             "open_tasks": len(open_tasks),
             "my_open_tasks": sum(1 for task in open_tasks if task.assignee_member_id == member.id),
@@ -761,13 +773,22 @@ def list_activity(
 
 
 @router.get("/admin/integrations")
-def integration_status(_: ProjectMember = Depends(require_role("project_admin"))):
+def integration_status(
+    db: Session = Depends(get_db),
+    _: ProjectMember = Depends(require_role("project_admin")),
+):
+    last_history = db.query(ProjectGithubEvent).filter(
+        ProjectGithubEvent.delivery_id.like("history:%")
+    ).order_by(ProjectGithubEvent.received_at.desc()).first()
     return {
         "feishu": {"configured": feishu_configured(), "app_id": FEISHU_APP_ID or None},
         "github": {
             "configured": bool(GITHUB_WEBHOOK_SECRET and GITHUB_REPOSITORY),
             "repository": GITHUB_REPOSITORY,
             "webhook_path": "/api/project/integrations/github/webhook",
+            "history_sync_available": bool(GITHUB_REPOSITORY),
+            "api_token_configured": bool(GITHUB_API_TOKEN),
+            "last_history_sync_at": last_history.received_at if last_history else None,
         },
     }
 
@@ -932,6 +953,128 @@ def _github_summary(event_type: str, payload: dict) -> dict:
     return {
         "actor": actor, "action": action, "title": str(title)[:512], "url": url,
         "reference": reference, "occurred_at": _parse_github_time(occurred), "number": number,
+    }
+
+
+def _history_member_id(members_by_login: dict[str, ProjectMember], logins: list[str | None]) -> int | None:
+    for login in logins:
+        if login and login.casefold() in members_by_login:
+            return members_by_login[login.casefold()].id
+    return None
+
+
+def _sync_history_task(
+    db: Session,
+    item: dict,
+    admin: ProjectMember,
+    members_by_login: dict[str, ProjectMember],
+    import_tasks: bool,
+) -> tuple[bool, bool]:
+    """Return (created, completed) for a GitHub issue/PR work item."""
+    number = item.get("number")
+    event_type = item.get("event_type")
+    if not isinstance(number, int) or event_type not in {"issues", "pull_request"}:
+        return False, False
+    field = ProjectTask.github_issue_number if event_type == "issues" else ProjectTask.github_pr_number
+    task = db.query(ProjectTask).filter(field == number).first()
+    completed = bool(item.get("complete"))
+    if task:
+        changed = completed and (task.status != "done" or task.progress != 100)
+        if changed:
+            task.status, task.progress, task.updated_at = "done", 100, utcnow()
+        return False, changed
+
+    # Closed, unmerged pull requests are evidence but not completed work and
+    # should not create a misleading task.
+    if not import_tasks or (event_type == "pull_request" and item.get("state") == "closed" and not completed):
+        return False, False
+    assignee_id = _history_member_id(
+        members_by_login,
+        [*(item.get("assignee_logins") or []), item.get("actor_login")],
+    )
+    status = "done" if completed else ("review" if event_type == "pull_request" else "todo")
+    now = utcnow()
+    task = ProjectTask(
+        title=str(item.get("title") or "GitHub work item")[:240],
+        description=f"从 GitHub 历史同步的 {'Issue' if event_type == 'issues' else 'Pull Request'} #{number}。",
+        status=status, priority="medium", assignee_member_id=assignee_id,
+        weight=1.0, progress=100 if completed else 0,
+        github_issue_number=number if event_type == "issues" else None,
+        github_pr_number=number if event_type == "pull_request" else None,
+        github_url=item.get("url"), created_by_member_id=admin.id,
+        created_at=item.get("created_at") or now, updated_at=now,
+    )
+    db.add(task)
+    return True, completed
+
+
+@router.post("/admin/github/sync-history", dependencies=[Depends(require_csrf)])
+def sync_github_history(
+    req: GithubHistorySyncInput,
+    db: Session = Depends(get_db),
+    admin: ProjectMember = Depends(require_role("project_admin")),
+):
+    if not GITHUB_REPOSITORY:
+        raise HTTPException(status_code=503, detail="GitHub 仓库尚未配置")
+    since = utcnow() - timedelta(days=req.days)
+    try:
+        items = fetch_github_history(GITHUB_REPOSITORY, GITHUB_API_TOKEN, since)
+    except GithubHistoryError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    members_by_login = {
+        row.github_login.casefold(): row
+        for row in db.query(ProjectMember).filter(ProjectMember.github_login.isnot(None)).all()
+        if row.github_login
+    }
+    now = utcnow()
+    inserted = updated = tasks_created = tasks_completed = 0
+    counts: dict[str, int] = {}
+    for item in items:
+        key = str(item.get("key") or "")
+        if not key or key.endswith(":None"):
+            continue
+        delivery_id = "history:" + key
+        row = db.query(ProjectGithubEvent).filter(ProjectGithubEvent.delivery_id == delivery_id).first()
+        actor = item.get("actor_login")
+        values = {
+            "event_type": item.get("event_type") or "unknown",
+            "action": item.get("action"),
+            "actor_login": actor,
+            "member_id": _history_member_id(members_by_login, [actor]),
+            "repository": item.get("repository") or GITHUB_REPOSITORY,
+            "title": str(item.get("title") or "GitHub event")[:512],
+            "url": item.get("url"), "reference": item.get("reference"),
+            "occurred_at": item.get("occurred_at") or now, "received_at": now,
+            "payload_summary_json": json.dumps({
+                "source": "history", "action": item.get("action"),
+                "number": item.get("number"), "reference": item.get("reference"),
+            }, ensure_ascii=False),
+        }
+        if row:
+            for field, value in values.items():
+                setattr(row, field, value)
+            updated += 1
+        else:
+            row = ProjectGithubEvent(delivery_id=delivery_id, **values)
+            db.add(row)
+            inserted += 1
+        event_type = values["event_type"]
+        counts[event_type] = counts.get(event_type, 0) + 1
+        created, completed = _sync_history_task(db, item, admin, members_by_login, req.import_tasks)
+        tasks_created += int(created)
+        tasks_completed += int(completed)
+
+    audit_project(db, admin, "sync_history", "github", None, {
+        "days": req.days, "import_tasks": req.import_tasks,
+        "events": len(items), "tasks_created": tasks_created,
+    })
+    db.commit()
+    return {
+        "status": "ok", "since": since, "events_found": len(items),
+        "events_inserted": inserted, "events_updated": updated,
+        "tasks_created": tasks_created, "tasks_completed": tasks_completed,
+        "counts": counts,
     }
 
 

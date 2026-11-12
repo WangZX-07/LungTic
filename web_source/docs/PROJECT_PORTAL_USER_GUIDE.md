@@ -95,14 +95,25 @@
 - **风险与决策**：记录风险等级、处置方案和关键项目决策。
 - **我的**：检查本人同步到的部门、职位、角色和 GitHub 账号。
 
-## 7. GitHub 动态没有内容
+## 7. GitHub 历史、动态与完成度
 
-“GitHub Webhook 已配置”只表示服务器环境变量完整，不代表已经收到事件。Webhook 只接收配置完成后的新事件，不会自动补历史记录。
+“GitHub Webhook 已配置”只表示服务器环境变量完整，不代表已经收到事件。管理员可以进入 **动态 → 导入已有 GitHub 历史**，回填提交、Issue、PR、工作流和 Release；之后的新事件由 Webhook 持续记录。
 
-1. 在 GitHub 仓库 **Settings → Webhooks → 对应 Webhook → Recent Deliveries** 检查投递。
-2. 正常投递应返回 HTTP `202`。
-3. 新建一次测试提交、Issue 或 PR 后刷新项目门户动态页。
-4. 如果出现 `401/403`，核对 GitHub Webhook Secret；如果 Secret 曾发到聊天或截图中，应立即重新生成并同时更新 GitHub 与服务器。
+1. 选择回溯 90 天、1 年、3 年或最多 10 年；为避免单次操作占用过多内存，最多扫描 20 个分支、每类读取 300 条，提交按 SHA 去重。
+2. 勾选“同时导入 Issue/PR 为任务”后，关闭的 Issue 和已合并 PR 会作为已完成任务；开放的 Issue/PR 会作为待办或评审任务。
+3. 提交、工作流和 Release 只作为证据，不直接换算完成百分比。
+4. 重复执行同步会更新已有记录，不会重复创建动态或任务。
+5. Webhook 排查仍可在 GitHub 仓库 **Settings → Webhooks → 对应 Webhook → Recent Deliveries** 完成；正常投递应返回 HTTP `202`。
+
+总览没有任何任务时显示“—”，不会再显示误导性的 0%。有任务后，完成度按任务权重和各任务完成比例汇总。GitHub 自动导入的任务默认权重为 1，项目负责人应按真实交付范围调整权重；提交数量不能代表完成比例。
+
+公开仓库可以不配置 API Token，但请求额度较低。私有仓库必须在服务器设置只读的 Fine-grained Token：
+
+```ini
+LUNGTIC_GITHUB_API_TOKEN=github_pat_xxxxxxxxxxxxxxxxx
+```
+
+Token 仅保存在 `/etc/lungtic/server.env`，至少授予目标仓库 Metadata、Contents、Issues、Pull requests 和 Actions 的只读权限，不要写入仓库或浏览器。
 
 ## 8. 常见问题速查
 
@@ -114,7 +125,7 @@
 | 自动角色未分配 | 检查 `od-...` 是否填在部门字段、规则是否启用、优先级是否正确 |
 | 改规则后角色仍不对 | 先检查成员是否设置了手动角色；手动角色优先 |
 | 飞书组织信息刚修改但页面没变 | 退出门户并重新登录，触发同步 |
-| GitHub 已配置但动态为空 | Webhook 不补历史；制造新事件并检查 Recent Deliveries |
+| GitHub 已配置但动态为空 | 在动态页执行一次历史同步，再检查 Webhook Recent Deliveries |
 
 ## 9. 安全注意事项
 

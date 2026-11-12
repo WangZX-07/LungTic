@@ -8,9 +8,10 @@
     <n-skeleton v-if="loading" text :repeat="8" />
     <template v-else-if="dashboard">
       <section class="progress-band surface" aria-label="项目整体进度">
-        <div><span>整体完成度</span><strong>{{ dashboard.project.progress }}%</strong></div>
-        <n-progress type="line" :percentage="dashboard.project.progress" :show-indicator="false" :height="10" />
-        <p>依据全部任务的权重与完成比例汇总</p>
+        <div><span>任务完成度</span><strong>{{ dashboard.project.has_tasks ? `${dashboard.project.progress}%` : "—" }}</strong></div>
+        <n-progress v-if="dashboard.project.has_tasks" type="line" :percentage="dashboard.project.progress" :show-indicator="false" :height="10" />
+        <div v-else class="progress-empty">尚无任务，暂不计算百分比</div>
+        <p>{{ dashboard.project.has_tasks ? `依据 ${dashboard.project.task_count} 个任务汇总 · ${dashboard.project.github_evidence_count} 条 GitHub 证据` : `已同步 ${dashboard.project.github_evidence_count} 条 GitHub 证据；创建任务后再计算完成度` }}</p>
       </section>
       <section class="metric-strip" aria-label="项目指标">
         <div class="metric-item"><span>进行中任务</span><strong>{{ dashboard.metrics.open_tasks }}</strong></div>
@@ -74,6 +75,7 @@ onMounted(async () => {
 .progress-band span { color: #52647b; font-size: 12px; }
 .progress-band strong { display: block; color: #172033; font-size: 28px; line-height: 36px; font-variant-numeric: tabular-nums; }
 .progress-band p { color: #64748b; font-size: 12px; }
+.progress-empty { min-height: 10px; border-radius: 5px; background: #e9eef4; color: #64748b; font-size: 12px; line-height: 32px; text-align: center; }
 .milestone-row :deep(.n-progress) { flex: 0 0 auto; }
 .update-row { align-items: flex-start; }
 @media (max-width: 767px) { .progress-band { grid-template-columns: 1fr; gap: 10px; } .progress-band p { display: none; } }

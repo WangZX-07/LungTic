@@ -17,3 +17,4 @@ $env:LUNGTIC_FEISHU_REDIRECT_URI = 'https://project.example.org/api/project/auth
 $env:LUNGTIC_PROJECT_BOOTSTRAP_OPEN_IDS = '<首位项目管理员的 ou_ Open ID>'
 $env:LUNGTIC_GITHUB_REPOSITORY = 'owner/repository'
 $env:LUNGTIC_GITHUB_WEBHOOK_SECRET = '<独立随机 Webhook Secret>'
+$env:LUNGTIC_GITHUB_API_TOKEN = '<可选；私有仓库历史同步必须配置的只读 Fine-grained Token>'

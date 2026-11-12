@@ -200,3 +200,64 @@ def test_signed_github_webhook_is_deduplicated_and_completes_linked_task(portal)
         assert stored.status == "done"
         assert stored.progress == 100
         assert db.query(ProjectGithubEvent).count() == 1
+
+
+def test_github_history_sync_imports_evidence_and_tasks(portal, monkeypatch):
+    client, Session, credentials = portal
+
+    def fake_history(repository, token, since):
+        assert repository == "WangZX-07/LungTic"
+        return [
+            {
+                "key": "commit:abc123", "event_type": "commit", "action": "committed",
+                "actor_login": "synthetic-dev", "repository": repository, "title": "Initial work",
+                "url": "https://github.com/WangZX-07/LungTic/commit/abc123", "reference": "abc123",
+                "occurred_at": datetime(2026, 11, 1), "created_at": datetime(2026, 11, 1),
+                "number": None, "complete": False, "state": None, "assignee_logins": [],
+            },
+            {
+                "key": "issue:10", "event_type": "issues", "action": "closed",
+                "actor_login": "synthetic-dev", "repository": repository, "title": "Finish API",
+                "url": "https://github.com/WangZX-07/LungTic/issues/10", "reference": "Issue #10",
+                "occurred_at": datetime(2026, 11, 2), "created_at": datetime(2026, 10, 1),
+                "number": 10, "complete": True, "state": "closed", "assignee_logins": [],
+            },
+            {
+                "key": "pull:11", "event_type": "pull_request", "action": "open",
+                "actor_login": "synthetic-dev", "repository": repository, "title": "Review desktop build",
+                "url": "https://github.com/WangZX-07/LungTic/pull/11", "reference": "PR #11",
+                "occurred_at": datetime(2026, 11, 3), "created_at": datetime(2026, 11, 3),
+                "number": 11, "complete": False, "state": "open", "assignee_logins": [],
+            },
+        ]
+
+    monkeypatch.setattr(project, "fetch_github_history", fake_history)
+    response = request_as(
+        client, credentials, "admin", "post", "/api/project/admin/github/sync-history",
+        json={"days": 365, "import_tasks": True},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["events_inserted"] == 3
+    assert response.json()["tasks_created"] == 2
+    assert response.json()["tasks_completed"] == 1
+    assert request_as(
+        client, credentials, "member", "post", "/api/project/admin/github/sync-history",
+        json={"days": 365, "import_tasks": True},
+    ).status_code == 403
+
+    duplicate = request_as(
+        client, credentials, "admin", "post", "/api/project/admin/github/sync-history",
+        json={"days": 365, "import_tasks": True},
+    )
+    assert duplicate.status_code == 200
+    assert duplicate.json()["events_inserted"] == 0
+    assert duplicate.json()["events_updated"] == 3
+    assert duplicate.json()["tasks_created"] == 0
+    dashboard = request_as(client, credentials, "admin", "get", "/api/project/dashboard").json()
+    assert dashboard["project"] == {
+        "name": "LungTic", "progress": 50, "has_tasks": True,
+        "task_count": 2, "github_evidence_count": 3,
+    }
+    with Session() as db:
+        assert db.query(ProjectGithubEvent).count() == 3
+        assert db.query(ProjectTask).count() == 2

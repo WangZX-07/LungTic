@@ -95,13 +95,15 @@
         </section>
 
         <section id="github">
-          <h3>GitHub 已配置但没有动态</h3>
-          <p>“已配置”只表示服务器环境变量完整。Webhook 不会补历史数据，只接收配置完成后的新事件。</p>
+          <h3>GitHub 历史、动态与完成度</h3>
+          <p>“已配置”只表示服务器环境变量完整。管理员可以在“动态”页点击“同步历史”，回填已有提交、Issue、PR、工作流和 Release；之后的新事件继续由 Webhook 记录。</p>
           <ol>
-            <li>打开 GitHub 仓库 Settings → Webhooks → 对应 Webhook → Recent Deliveries。</li>
-            <li>制造一次新的 Push、Issue 或 PR，再刷新门户动态页。</li>
-            <li>正常投递应返回 HTTP <code>202</code>；若返回 401/403，核对双方 Secret 是否完全一致。</li>
+            <li>选择历史范围；最多扫描 20 个分支、每类导入 300 条，提交按 SHA 去重，重复同步会更新而不是重复创建。</li>
+            <li>勾选“同时导入 Issue/PR 为任务”，关闭的 Issue 和已合并 PR 会作为已完成任务参与计算。</li>
+            <li>提交、工作流和 Release 只作为证据，不会用数量直接换算百分比。</li>
+            <li>Webhook 异常时，在 GitHub 仓库 Settings → Webhooks → Recent Deliveries 检查；正常投递应返回 HTTP <code>202</code>。</li>
           </ol>
+          <p>没有任何任务时，总览显示“—”而不是 0%。有任务后，完成度按任务权重和各任务完成比例计算；管理员仍应根据真实交付范围调整任务权重。</p>
         </section>
 
         <section id="troubleshooting">
